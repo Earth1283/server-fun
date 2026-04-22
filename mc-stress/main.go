@@ -147,6 +147,12 @@ func configSPacketName(id int) string {
 		return "Feature Flags"
 	case 0x0D:
 		return "Update Tags (Config)"
+	case 0x0E:
+		return "Select Known Packs"
+	case 0x0F:
+		return "Custom Report Details"
+	case 0x10:
+		return "Server Links"
 	default:
 		return "Unknown"
 	}
@@ -324,6 +330,12 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 			resp := buildPacket(0x04, data, compressed)
 			conn.Write(resp)
 			dbgSend(0x04, "Pong", resp)
+
+		case 0x0E: // Select Known Packs
+			// Respond with 0 known packs
+			resp := buildPacket(0x07, []byte{0x00}, compressed)
+			conn.Write(resp)
+			dbgSend(0x07, "Known Packs", resp)
 		}
 	}
 }
@@ -365,6 +377,10 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 // fmtJSON returns a trimmed string representation of packet payload that is
 // likely a JSON chat component (e.g. Disconnect reason).
 func fmtJSON(payload []byte) string {
+	if len(payload) > 0 && payload[0] == 0x0a {
+		// It's NBT. For a stresser, we'll just show hex or a simplified view.
+		return fmt.Sprintf("[NBT] %x", payload)
+	}
 	strLen, n := decodeVarInt(payload)
 	if n < len(payload) && strLen > 0 && n+strLen <= len(payload) {
 		return string(payload[n : n+strLen])
@@ -786,6 +802,13 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 			bytesSent.Add(int64(len(resp)))
 		case 0x05: // Ping (was 0x04)
 			resp := buildPacket(0x04, data, compressed)
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			conn.Write(resp)
+			conn.SetWriteDeadline(time.Time{})
+			bytesSent.Add(int64(len(resp)))
+
+		case 0x0E: // Select Known Packs
+			resp := buildPacket(0x07, []byte{0x00}, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
