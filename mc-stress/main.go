@@ -18,6 +18,10 @@ var (
 	bytesSent    atomic.Int64
 	droppedConns atomic.Int64
 	newConns     atomic.Int64
+
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func writeVarInt(buf []byte, v int) []byte {
@@ -158,8 +162,9 @@ func fmtBytes(n int64) string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "mc-stress <ip:port>",
-	Short: "Minecraft G1GC heap-exhaustion stress tester",
+	Use:     "mc-stress <ip:port>",
+	Version: fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date),
+	Short:   "Minecraft G1GC heap-exhaustion stress tester",
 	Long: `Holds thousands of half-open Minecraft connections to force G1GC object
 promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 	Args: cobra.ExactArgs(1),
