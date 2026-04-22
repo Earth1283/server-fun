@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"crypto/aes"
 	"crypto/cipher"
 	cryptorand "crypto/rand"
@@ -491,11 +493,30 @@ func readPacket(r io.Reader, compressed bool) (int, []byte, error) {
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return 0, nil, err
 	}
+
 	data := buf
 	if compressed {
-		_, n := decodeVarInt(buf)
-		data = buf[n:]
+		uLen, n := decodeVarInt(buf)
+		if uLen > 0 {
+			// Data is compressed
+			zr, err := zlib.NewReader(bytes.NewReader(buf[n:]))
+			if err != nil {
+				return 0, nil, fmt.Errorf("zlib reader: %v", err)
+			}
+			defer zr.Close()
+			data, err = io.ReadAll(zr)
+			if err != nil {
+				return 0, nil, fmt.Errorf("zlib read: %v", err)
+			}
+			if len(data) != uLen {
+				return 0, nil, fmt.Errorf("zlib size mismatch: got %d, want %d", len(data), uLen)
+			}
+		} else {
+			// Data is uncompressed (wrapped)
+			data = buf[n:]
+		}
 	}
+
 	id, n := decodeVarInt(data)
 	return id, data[n:], nil
 }
