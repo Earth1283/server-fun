@@ -224,8 +224,13 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 
 		case 0x03: // Set Compression
 			threshold, _ := decodeVarInt(payload)
-			compressed = true
-			dbgInfo("compression enabled  threshold=%d", threshold)
+			if threshold >= 0 {
+				compressed = true
+				dbgInfo("compression enabled  threshold=%d", threshold)
+			} else {
+				compressed = false
+				dbgInfo("compression disabled (threshold < 0)")
+			}
 
 		case 0x01: // Encryption Request
 			serverID, pubKeyDER, verifyToken, shouldAuth, err := parseEncryptionRequest(payload)
@@ -497,6 +502,9 @@ func readPacket(r io.Reader, compressed bool) (int, []byte, error) {
 	data := buf
 	if compressed {
 		uLen, n := decodeVarInt(buf)
+		if n > len(buf) {
+			return 0, nil, fmt.Errorf("truncated compression header")
+		}
 		if uLen > 0 {
 			// Data is compressed
 			zr, err := zlib.NewReader(bytes.NewReader(buf[n:]))
@@ -684,8 +692,8 @@ func tryAdvanceToPlay(conn net.Conn, verbose bool) (net.Conn, bool, bool) {
 
 		switch id {
 		case 0x03:
-			compressed = true
-			_ = payload
+			threshold, _ := decodeVarInt(payload)
+			compressed = (threshold >= 0)
 
 		case 0x01:
 			serverID, pubKeyDER, verifyToken, _, err := parseEncryptionRequest(payload)
