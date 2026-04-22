@@ -271,7 +271,7 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 
 		case 0x02: // Login Success
 			dbgInfo("UUID+name in payload (%d B)", len(payload))
-			ack := buildPacket(0x03, nil)
+			ack := buildPacket(0x03, nil, compressed)
 			active.Write(ack)
 			dbgSend(0x03, "Login Acknowledged", ack)
 			dbgState("Login", "Configuration")
@@ -301,7 +301,7 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 			return
 
 		case 0x03: // Finish Configuration (was 0x02)
-			ack := buildPacket(0x02, nil)
+			ack := buildPacket(0x02, nil, compressed)
 			conn.Write(ack)
 			dbgSend(0x02, "Acknowledge Configuration", ack)
 			dbgState("Configuration", "Play")
@@ -309,12 +309,12 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 			return
 
 		case 0x04: // Keep Alive (was 0x03)
-			resp := buildPacket(0x03, data)
+			resp := buildPacket(0x03, data, compressed)
 			conn.Write(resp)
 			dbgSend(0x03, "Keep Alive Response (Config)", resp)
 
 		case 0x05: // Ping (was 0x04)
-			resp := buildPacket(0x04, data)
+			resp := buildPacket(0x04, data, compressed)
 			conn.Write(resp)
 			dbgSend(0x04, "Pong", resp)
 		}
@@ -348,7 +348,7 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 
 		case 0x26: // Keep Alive
 			kaCount++
-			resp := buildPacket(0x18, data)
+			resp := buildPacket(0x18, data, compressed)
 			conn.Write(resp)
 			dbgSend(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp)
 		}
@@ -397,13 +397,25 @@ func writeString(buf []byte, s string) []byte {
 	return append(buf, raw...)
 }
 
-func buildPacket(id int, payload []byte) []byte {
+func buildPacket(id int, payload []byte, compressed bool) []byte {
 	var data []byte
 	data = writeVarInt(data, id)
 	data = append(data, payload...)
-	var out []byte
-	out = writeVarInt(out, len(data))
-	return append(out, data...)
+
+	if compressed {
+		// Wrap in compression header
+		var inner []byte
+		inner = writeVarInt(inner, 0) // Uncompressed length = 0 (not compressed)
+		inner = append(inner, data...)
+
+		var out []byte
+		out = writeVarInt(out, len(inner))
+		return append(out, inner...)
+	} else {
+		var out []byte
+		out = writeVarInt(out, len(data))
+		return append(out, data...)
+	}
 }
 
 func buildHandshake(host string, port uint16) []byte {
@@ -424,7 +436,7 @@ func buildLoginStart(name string) []byte {
 	var payload []byte
 	payload = writeString(payload, name)
 	payload = append(payload, make([]byte, 16)...)
-	return buildPacket(0x00, payload)
+	return buildPacket(0x00, payload, false)
 }
 
 func buildEncryptionResponse(encSecret, encToken []byte) []byte {
@@ -434,7 +446,7 @@ func buildEncryptionResponse(encSecret, encToken []byte) []byte {
 	data = append(data, 0x01)
 	data = writeVarInt(data, len(encToken))
 	data = append(data, encToken...)
-	return buildPacket(0x01, data)
+	return buildPacket(0x01, data, false)
 }
 
 // ---------------------------------------------------------------------------
@@ -699,7 +711,7 @@ func tryAdvanceToPlay(conn net.Conn, verbose bool) (net.Conn, bool, bool) {
 			active = enableEncryption(conn, sharedSecret)
 
 		case 0x02:
-			ack := buildPacket(0x03, nil)
+			ack := buildPacket(0x03, nil, compressed)
 			active.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			_, err = active.Write(ack)
 			active.SetWriteDeadline(time.Time{})
@@ -728,7 +740,7 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 		case 0x02: // Disconnect
 			return false
 		case 0x03: // Finish Configuration (was 0x02)
-			ack := buildPacket(0x02, nil)
+			ack := buildPacket(0x02, nil, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			_, err = conn.Write(ack)
 			conn.SetWriteDeadline(time.Time{})
@@ -738,13 +750,13 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 			bytesSent.Add(int64(len(ack)))
 			return true
 		case 0x04: // Keep Alive (was 0x03)
-			resp := buildPacket(0x03, data)
+			resp := buildPacket(0x03, data, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
 			bytesSent.Add(int64(len(resp)))
 		case 0x05: // Ping (was 0x04)
-			resp := buildPacket(0x04, data)
+			resp := buildPacket(0x04, data, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
@@ -769,7 +781,7 @@ func holdConnPlay(conn net.Conn, compressed bool, verbose bool) {
 			return
 		}
 		if id == 0x26 {
-			resp := buildPacket(0x18, data)
+			resp := buildPacket(0x18, data, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
