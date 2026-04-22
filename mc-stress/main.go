@@ -314,22 +314,22 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 			return
 
 		case 0x03: // Finish Configuration (was 0x02)
-			ack := buildPacket(0x02, nil, compressed)
+			ack := buildPacket(0x03, nil, compressed)
 			conn.Write(ack)
-			dbgSend(0x02, "Acknowledge Configuration", ack)
+			dbgSend(0x03, "Acknowledge Configuration", ack)
 			dbgState("Configuration", "Play")
 			debugRunPlay(conn, compressed, start)
 			return
 
 		case 0x04: // Keep Alive (was 0x03)
-			resp := buildPacket(0x03, data, compressed)
-			conn.Write(resp)
-			dbgSend(0x03, "Keep Alive Response (Config)", resp)
-
-		case 0x05: // Ping (was 0x04)
 			resp := buildPacket(0x04, data, compressed)
 			conn.Write(resp)
-			dbgSend(0x04, "Pong", resp)
+			dbgSend(0x04, "Keep Alive Response (Config)", resp)
+
+		case 0x05: // Ping (was 0x04)
+			resp := buildPacket(0x05, data, compressed)
+			conn.Write(resp)
+			dbgSend(0x05, "Pong", resp)
 
 		case 0x0E: // Select Known Packs
 			// Respond with 0 known packs
@@ -785,7 +785,7 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 		case 0x02: // Disconnect
 			return false
 		case 0x03: // Finish Configuration (was 0x02)
-			ack := buildPacket(0x02, nil, compressed)
+			ack := buildPacket(0x03, nil, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			_, err = conn.Write(ack)
 			conn.SetWriteDeadline(time.Time{})
@@ -795,13 +795,13 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 			bytesSent.Add(int64(len(ack)))
 			return true
 		case 0x04: // Keep Alive (was 0x03)
-			resp := buildPacket(0x03, data, compressed)
+			resp := buildPacket(0x04, data, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
 			bytesSent.Add(int64(len(resp)))
 		case 0x05: // Ping (was 0x04)
-			resp := buildPacket(0x04, data, compressed)
+			resp := buildPacket(0x05, data, compressed)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
