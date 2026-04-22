@@ -20,21 +20,41 @@ The attack proceeds in four phases:
 
 1. **Connect & Bloat**
    Each worker opens a TCP connection and sends a valid Minecraft Handshake
-   packet (protocol 764 / 1.20.1). The ``serverAddress`` field — normally a
+   packet (protocol 767 / 1.21.1). The ``serverAddress`` field — normally a
    hostname — is replaced with a randomly generated string of up to 255
    characters (the protocol maximum). Netty deserialises this into a live
    ``java.lang.String`` object on the JVM heap.
 
-2. **Hold Hostage**
-   The client does *not* proceed with the login sequence. Netty keeps a
-   ``ChannelHandlerContext`` reference to each session, which in turn keeps
-   the bloated ``String`` reachable. G1GC cannot collect it during Minor GCs
-   because it is still live from the server's perspective.
+2. **Login Sequence**
+   After the Handshake the client immediately sends a ``Login Start`` packet
+   to avoid the server's 30-second login timeout ("Took too long to log in!").
+   The server's response determines which hold strategy is used:
 
-3. **The Dribble**
-   A single ``0x00`` byte is written to the socket every ``--dribble-interval``
-   seconds. This resets Netty's ``ReadTimeoutHandler`` counter, preventing the
-   server from closing idle connections before the heap is saturated.
+   * **Offline-mode server** — server replies with ``Login Success``.
+     The client completes the sequence (``Login Acknowledged``, drain
+     ``Configuration`` state, ``Acknowledge Configuration``) and enters
+     **Play state**.
+   * **Online-mode server with credentials** — server replies with
+     ``Encryption Request``. The client performs the full RSA + AES/CFB8
+     handshake and calls the Mojang session server. On success, the
+     connection also reaches **Play state**.
+   * **Online-mode server without credentials** — encryption is attempted
+     but the Mojang join call is skipped. The server kicks with
+     "Failed to verify username!" and the worker falls back to the
+     **dribble strategy** (see below).
+
+3. **Hold Hostage**
+   In **Play state** the client responds to the server's periodic
+   ``Keep Alive`` packets (every ~15 seconds). The connection — and the
+   heap objects it keeps alive — is held indefinitely. No dribble is needed.
+
+   When Play state cannot be reached (online-mode without credentials), the
+   **dribble strategy** is used instead: on the first tick a three-byte
+   VarInt header (``0xFF 0xFF 0x03`` = 65 535) is sent, telling Netty to
+   expect a 65 535-byte frame. Subsequent ticks drip single filler bytes into
+   that open frame, resetting the ``ReadTimeoutHandler`` every
+   ``--dribble-interval`` seconds without ever completing the frame. At the
+   default 5-second interval the frame fills after ~91 hours.
 
 4. **Premature Promotion**
    Across thousands of connections the Eden and Survivor spaces fill with
@@ -45,11 +65,31 @@ The attack proceeds in four phases:
 
 ----
 
+Encryption Support
+------------------
+
+When the server sends an ``Encryption Request`` the client:
+
+1. Generates a random 16-byte **shared secret**.
+2. Parses the server's RSA public key (DER-encoded ``SubjectPublicKeyInfo``).
+3. RSA-PKCS1v15-encrypts both the shared secret and the server's verify token.
+4. If ``--access-token`` and ``--player-uuid`` are provided, calls
+   ``sessionserver.mojang.com/session/minecraft/join`` with the signed SHA1
+   server hash (Minecraft's convention: signed big-endian hex).
+5. Sends the ``Encryption Response``.
+6. Wraps the TCP connection in a custom **AES/CFB8** cipher stream (Go's
+   standard library provides CFB128; Minecraft uses 8-bit feedback mode, so
+   the implementation is hand-rolled).
+
+All subsequent I/O — including Configuration and Play state packets — passes
+through the cipher transparently. Compression (``Set Compression``) is also
+handled: the extra ``Data Length`` VarInt is stripped for packets below the
+threshold.
+
+----
+
 Architecture
 ------------
-
-The tool is written for minimal overhead on the attacker side so that the
-bottleneck stays on the target JVM, not the Go process.
 
 Concurrency
 ~~~~~~~~~~~
@@ -57,10 +97,21 @@ Concurrency
 ``--workers`` goroutines are launched at startup. Each runs an infinite loop::
 
     for {
-        connect → send handshake → hold (dribble loop) → reconnect on drop
+        [wait for join gate] → connect → handshake → login →
+        (play state → keep-alive loop) OR (dribble loop) → reconnect on drop
     }
 
-There is no shared mutex. Goroutines never coordinate with one another.
+There is no shared mutex. Goroutines never coordinate except through the
+optional join gate channel (see ``--join-delay``).
+
+Join Gate
+~~~~~~~~~
+
+When ``--join-delay`` is set, a single ``chan struct{}`` with capacity 1 acts
+as a global rate limiter. A background goroutine pushes one token per interval;
+every worker blocks on a receive before dialling. This limits new connections
+to at most one per interval across all workers combined, bypassing server-side
+connection throttling.
 
 Lock-Free Telemetry
 ~~~~~~~~~~~~~~~~~~~
@@ -70,18 +121,16 @@ All statistics use ``sync/atomic`` 64-bit integers:
 ============== =============================================================
 Counter        Meaning
 ============== =============================================================
-``activeConns``  Connections currently in the dribble-hold phase
+``activeConns``  Connections currently in the hold phase (Play or dribble)
 ``newConns``     Connections opened since the last reporter tick (reset each second)
 ``droppedConns`` Cumulative connections that failed to dial or were kicked
-``bytesSent``    Cumulative bytes written (handshakes + dribble bytes)
+``bytesSent``    Cumulative bytes written (all packets + dribble bytes)
 ============== =============================================================
 
 Reporter
 ~~~~~~~~
 
-A dedicated goroutine wakes every second, reads the atomic counters, swaps
-``newConns`` to zero to compute a true per-second rate, and prints a
-single-line status::
+A dedicated goroutine wakes every second and prints a single-line status::
 
     [15:04:05] Active:   8432 | New/s:  217 | Dropped:    59 | Sent: 12.40MB
 
@@ -103,11 +152,7 @@ Requirements: Go 1.22 or later.
 
     git clone <repo>
     cd mc-stress
-    go build -o mc-stress .
-
-Or install directly::
-
-    go install mc-stress@latest
+    go build -o gaslighter .
 
 ----
 
@@ -116,29 +161,74 @@ Usage
 
 .. code-block:: text
 
-    mc-stress <ip:port> [flags]
+    gaslighter <ip:port> [flags]
 
     Flags:
       -s, --bloat-size int             handshake server-address string length (max 255) (default 255)
-      -d, --dribble-interval duration  interval between keep-alive bytes (default 5s)
-      -h, --help                       help for mc-stress
+          --debug                      single-connection debug mode with colored packet log
+      -d, --dribble-interval duration  interval between keep-alive bytes, online-mode fallback (default 5s)
+      -j, --join-delay duration        minimum gap between new connections (e.g. 4001ms)
+      -a, --access-token string        Mojang access token for online-mode auth
+      -u, --player-uuid string         Mojang player UUID matching the access token
       -v, --verbose                    print per-connection TCP errors
       -w, --workers int                concurrent connections to maintain (default 10000)
 
 Examples
 ~~~~~~~~
 
-Default run against a local server::
+Default run against an offline-mode server::
 
-    ./mc-stress 127.0.0.1:25565
+    ./gaslighter 127.0.0.1:25565
 
-Push harder — 50 000 workers, faster dribble, verbose errors::
+Push harder — 50 000 workers, verbose errors::
 
-    ./mc-stress 192.168.1.10:25565 -w 50000 -d 3s -v
+    ./gaslighter 192.168.1.10:25565 -w 50000 -v
 
-Reduced bloat to observe partial heap pressure::
+Respect a server throttle of one new login per 4 001 ms::
 
-    ./mc-stress 127.0.0.1:25565 -w 10000 -s 128 -d 10s
+    ./gaslighter 96.9.213.246:25565 -j 4001ms
+
+Online-mode server with Mojang credentials::
+
+    ./gaslighter 192.168.1.10:25565 -a <access-token> -u <player-uuid>
+
+Inspect a single connection before running the full attack::
+
+    ./gaslighter --debug 127.0.0.1:25565
+
+----
+
+Debug Mode
+----------
+
+``--debug`` opens exactly one connection and logs every packet in colour::
+
+    19:43:09.357 → SEND  0x00  Handshake                          265 B
+                          proto=767  host=nFAk40y...(255)  port=25565  next=Login
+    19:43:09.357 → SEND  0x00  Login Start  name=IAl4BlmyN4fjzjNc  35 B
+    19:43:09.357 [Handshake → Login]
+    19:43:09.741 ← RECV  0x02  Login Success                       23 B  [db 86 01 ...]
+    19:43:09.741 → SEND  0x03  Login Acknowledged                   2 B
+    19:43:09.741 [Login → Configuration]
+    19:43:09.742 ← RECV  0x07  Registry Data                    38712 B  [0a 0a 00 ...]
+    19:43:09.742 ← RECV  0x03  Finish Configuration                  0 B
+    19:43:09.742 → SEND  0x02  Acknowledge Configuration             2 B
+    19:43:09.742 [Configuration → Play]
+    19:43:09.742 ✓  Play state reached — holding indefinitely (Ctrl-C to stop)
+    19:43:09.743 ← RECV  0x26  Keep Alive                           8 B  [00 00 00 00 ...]
+    19:43:09.743 → SEND  0x18  Keep Alive Response  #1              10 B
+
+Colour key:
+
+* **Green** ``→ SEND`` — outbound packet
+* **Cyan** ``← RECV`` — inbound packet
+* **Yellow** ``[State → State]`` — protocol state transition
+* **Bold green ✓** — success milestone
+* **Bold red ✗** — error or server disconnect
+
+For online-mode servers, the encryption handshake is also logged in full:
+RSA key size, shared secret, server hash, and Mojang auth result.
+The normal status reporter is suppressed in debug mode.
 
 ----
 
@@ -207,12 +297,13 @@ Signal        What it means
 Active rising  Workers are successfully holding connections; heap pressure is
                building on the target.
 New/s stable   The target is accepting connections at a steady rate; increase
-               ``-w`` or reduce ``-d`` to accelerate promotion.
+               ``-w`` or reduce ``-j`` to accelerate.
 New/s drops    The target's Netty accept queue is saturating or the attacker
                OS is hitting a port/FD limit; check ``-v`` output.
 Dropped spikes  Server is kicking connections (firewall, rate-limit plugin, or
-               a GC pause causing Netty timeouts). Reduce ``-d`` to hold
-               longer before timeout fires.
+               a GC pause causing Netty timeouts). For online-mode servers
+               without credentials this is expected — the dribble fallback
+               reconnects immediately.
 ============  ================================================================
 
 ----
@@ -220,34 +311,61 @@ Dropped spikes  Server is kicking connections (firewall, rate-limit plugin, or
 Protocol Reference
 ------------------
 
-The handshake packet sent by this tool conforms to the `Minecraft Java
-Edition protocol <https://wiki.vg/Protocol>`_ handshaking state:
+The tool implements the full Minecraft Java Edition login sequence for
+protocol 767 (1.21.1):
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 20 60
+   :widths: 15 15 15 55
 
-   * - Field
-     - Type
-     - Value
-   * - Packet Length
-     - VarInt
-     - Length of remaining payload
-   * - Packet ID
-     - VarInt
+   * - State
+     - Direction
+     - Packet ID
+     - Purpose
+   * - Handshake
+     - C→S
      - ``0x00``
-   * - Protocol Version
-     - VarInt
-     - ``764`` (1.20.1)
-   * - Server Address
-     - String
-     - Random alphanumeric, ``--bloat-size`` bytes (max 255)
-   * - Server Port
-     - Unsigned Short
-     - Port from ``<ip:port>`` argument
-   * - Next State
-     - VarInt
-     - ``2`` (Login) — triggers deeper server-side session allocation
+     - Declares protocol 767, oversized server address, next=Login
+   * - Login
+     - C→S
+     - ``0x00``
+     - Login Start — random 16-char username + zero UUID
+   * - Login
+     - S→C
+     - ``0x03``
+     - Set Compression (optional) — tracked, uncompressed payloads assumed
+   * - Login
+     - S→C
+     - ``0x01``
+     - Encryption Request — triggers RSA + AES/CFB8 handshake
+   * - Login
+     - C→S
+     - ``0x01``
+     - Encryption Response — RSA-encrypted shared secret + verify token
+   * - Login
+     - S→C
+     - ``0x02``
+     - Login Success — offline mode or post-authentication
+   * - Login
+     - C→S
+     - ``0x03``
+     - Login Acknowledged
+   * - Configuration
+     - S→C
+     - ``0x03``
+     - Finish Configuration
+   * - Configuration
+     - C→S
+     - ``0x02``
+     - Acknowledge Configuration
+   * - Play
+     - S→C
+     - ``0x26``
+     - Keep Alive — echoed back to hold the connection
+   * - Play
+     - C→S
+     - ``0x18``
+     - Keep Alive response
 
 ----
 

