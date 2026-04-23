@@ -64,19 +64,19 @@ const (
 func ts() string { return fmt.Sprintf("%s%s%s", cDim, time.Now().Format("15:04:05.000"), cReset) }
 
 func dbgSend(id int, name string, pkt []byte) {
-	fmt.Printf("%s %s→ SEND%s  %s0x%02X%s  %-34s %s%d B%s\n",
+	fmt.Printf("%s %s→ SEND%s  %s0x%02X%s  %-34s %s%6d B%s\n",
 		ts(), cBoldGreen, cReset, cGreen, id, cReset, name, cGray, len(pkt), cReset)
 }
 
 func dbgRecv(id int, name string, payload []byte) {
 	preview := ""
-	if n := 10; len(payload) > 0 {
+	if n := 16; len(payload) > 0 {
 		if len(payload) < n {
 			n = len(payload)
 		}
 		preview = fmt.Sprintf("  %s[% x]%s", cGray, payload[:n], cReset)
 	}
-	fmt.Printf("%s %s← RECV%s  %s0x%02X%s  %-34s %s%d B%s%s\n",
+	fmt.Printf("%s %s← RECV%s  %s0x%02X%s  %-34s %s%6d B%s%s\n",
 		ts(), cBoldCyan, cReset, cCyan, id, cReset, name, cGray, len(payload), cReset, preview)
 }
 
@@ -308,6 +308,21 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 		dbgRecv(id, configSPacketName(id), data)
 
 		switch id {
+		case 0x01: // Plugin Message (Config)
+			strLen, n := decodeVarInt(data)
+			if n+strLen <= len(data) {
+				dbgInfo("channel=%s", string(data[n:n+strLen]))
+			}
+
+		case 0x07: // Registry Data
+			strLen, n := decodeVarInt(data)
+			if n+strLen <= len(data) {
+				dbgInfo("registry=%s", string(data[n:n+strLen]))
+			}
+
+		case 0x0D: // Update Tags (Config)
+			dbgInfo("tags update (%d bytes)", len(data))
+
 		case 0x02: // Disconnect (was 0x01)
 			dbgInfo("reason: %s", fmtJSON(data))
 			fmt.Printf("\n%sheld for %s%s\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
@@ -367,9 +382,17 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 
 		case 0x26: // Keep Alive
 			kaCount++
+			kaID, _ := binary.ReadUvarint(bytes.NewReader(data))
+			dbgInfo("id=%d", kaID)
 			resp := buildPacket(0x18, data, compressed)
 			conn.Write(resp)
 			dbgSend(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp)
+
+		case 0x28: // Join Game
+			dbgInfo("play start")
+
+		case 0x3C: // Player Position
+			dbgInfo("server position/rotation update")
 		}
 	}
 }
