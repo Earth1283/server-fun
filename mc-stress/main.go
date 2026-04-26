@@ -204,7 +204,12 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 		cBoldYellow, target, bloatSize, dribbleInterval)
 
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", target, 10*time.Second)
+	dialer, err := getDialer()
+	if err != nil {
+		dbgErr("proxy dialer", err)
+		return
+	}
+	conn, err := dialer.Dial("tcp", target)
 	if err != nil {
 		dbgErr("connect", err)
 		return
