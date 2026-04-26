@@ -1086,6 +1086,21 @@ func fmtBytes(n int64) string {
 	}
 }
 
+func loadProxies(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			proxyPool = append(proxyPool, line)
+		}
+	}
+	return nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "mc-stress <ip:port>",
 	Version: fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date),
@@ -1117,6 +1132,14 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		login, _ = cmd.Flags().GetBool("login")
 		prelogin, _ = cmd.Flags().GetBool("prelogin")
 		har, _ = cmd.Flags().GetBool("har")
+
+		proxyPath := viper.GetString("proxies")
+		if proxyPath != "" {
+			if err := loadProxies(proxyPath); err != nil {
+				return fmt.Errorf("failed to load proxies: %w", err)
+			}
+			fmt.Printf("Loaded %d proxies from %s\n", len(proxyPool), proxyPath)
+		}
 
 		if bloatSize > 255 {
 			return fmt.Errorf("--bloat-size max is 255 (Minecraft protocol limit)")
