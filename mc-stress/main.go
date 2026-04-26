@@ -24,7 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	_ "golang.org/x/net/proxy"
+	"golang.org/x/net/proxy"
 )
 
 var (
@@ -103,6 +103,15 @@ func dbgOK(msg string) {
 
 func dbgErr(label string, err error) {
 	fmt.Printf("%s %s✗%s  %s: %v\n", ts(), cBoldRed, cReset, label, err)
+}
+
+func getDialer() (proxy.Dialer, error) {
+	baseDialer := &net.Dialer{Timeout: 10 * time.Second}
+	if len(proxyPool) == 0 {
+		return baseDialer, nil
+	}
+	proxyAddr := proxyPool[rand.Intn(len(proxyPool))]
+	return proxy.SOCKS5("tcp", proxyAddr, nil, baseDialer)
 }
 
 // ---------------------------------------------------------------------------
