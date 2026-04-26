@@ -22,6 +22,22 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 - **Zero-Coordination Workers**: Thousands of goroutines working in perfect, lock-free disharmony using `sync/atomic` telemetry.
 - **gaslighterc.toml**: Save your favorite settings in a config file. Because even chaos deserves a little structure.
 
+## 🛠 Build & Install
+
+Requirements: Go 1.25+. Note that all compiled binaries are ignored by git to keep the workspace clean.
+
+### 1. Gaslighter (mc-stress)
+```bash
+cd mc-stress
+go build -o ../gaslighter .
+```
+
+### 2. MC-Probe
+```bash
+cd mc-probe
+go build -o ../mc-probe-bin .
+```
+
 ## 🚀 Getting Started (The 2-Minute Warning)
 
 1. **OS Tuning**: Optimizing your kernel for high-frequency spamming is a must.

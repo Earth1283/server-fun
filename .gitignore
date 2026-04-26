@@ -1,6 +1,14 @@
+# Binaries
 gaslighter
 mc-probe-bin
-main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Development
 mc-stress/test/
 docs/*
 .gemini/
