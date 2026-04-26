@@ -15,7 +15,11 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 ## ✨ Features for the Discerning Chaos-Enjoyer:
 - **SRV Record Magic**: Just point it at `play.target.com`. We'll find the port so you don't have to.
 - **SOCKS5 Stealth**: Tunnel your "testing" through a list of proxies. Supports Random and Round-robin strategies because variety is the spice of a stress test.
-- **Zero-Coordination Workers**: Thousands of goroutines working in perfect, lock-free disharmony.
+- **Pre-Login Spam**: Don't want to wait for a full connection? Spam `AsyncPlayerPreLoginEvent` to keep the server's auth threads and database plugins perpetually busy.
+- **Hit-and-Run (--har)**: The ultimate in fire-and-forget technology. Send the packets and hang up before the server even has a chance to say "hello."
+- **Bespoke Encryption**: Hand-rolled AES/CFB8 implementation for online-mode servers. We do our own crypto because the standard library wasn't "Minecrafty" enough.
+- **The Dribble Strategy**: If we can't get into the Play state, we'll slowly drip filler bytes into an open frame like a leaky faucet, keeping the connection alive for up to 91 hours of pure heap-resident fun.
+- **Zero-Coordination Workers**: Thousands of goroutines working in perfect, lock-free disharmony using `sync/atomic` telemetry.
 - **gaslighterc.toml**: Save your favorite settings in a config file. Because even chaos deserves a little structure.
 
 ## 🚀 Getting Started (The 2-Minute Warning)
