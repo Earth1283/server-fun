@@ -2,6 +2,9 @@
 
 Welcome to the official laboratory notes for the ``server-fun`` arsenal. These guides are intended for authorized diagnostic testing of home-lab infrastructure. If a server happens to stop breathing during your "tests," consider it a successful empirical validation of its limits.
 
+## 🧠 Philosophy
+0. [Theory of Operations](./THEORY_OF_OPERATIONS.md) - The science of why everything is breaking.
+
 ## ⛽ Gaslighter (gaslighter)
 The heavy artillery for JVM heap-resident fun.
 1. [Heap Harvesting: Inducing G1GC Despair](./gaslighter/01-heap-harvesting.md) - The slow-burn approach.

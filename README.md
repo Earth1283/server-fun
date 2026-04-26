@@ -38,6 +38,24 @@ cd wiretap
 go build -o ../wiretap-bin .
 ```
 
+## 🧠 Theoretical Foundations (The "Science" of Chaos)
+
+For the Senior Engineer who needs to justify these tools to a project manager, here is the technical breakdown of our "optimization" strategies.
+
+### ⛽ Gaslighter: The JVM Whisperer
+Gaslighter is not a "stress tester." It is a **Resource Asphyxiator**. It targets the two most precious commodities in a Java environment: **Memory Residency** and **Thread Availability**.
+
+*   **The G1GC Heap Harvest**: Modern Minecraft servers love the G1 Garbage Collector. We exploit this love. By holding thousands of connections with maximized Handshake strings (255 characters of pure entropy), we overcrowd the **Eden Space**. The JVM, seeing these objects survive Minor GCs, assumes they are "critical infrastructure" and promotes them to the **Old Generation**. We aren't just using RAM; we are "leasing" the Old Gen indefinitely until the JVM triggers a **Full GC Stall**—a freeze so profound it gives the server admins time to reflect on their life choices.
+*   **Glacial Logins (--stall)**: Why flood a server when you can simply occupy it? By responding to authentication challenges at **glacial speeds** (28 seconds per step), a single worker can hold a **Login Thread** hostage for nearly the full 30-second timeout. With 5,000 workers, the server's thread pool becomes a bureaucratic nightmare where no one can join, and everyone is "waiting for a response."
+*   **The HAR Strategy (--har)**: Hit-and-Run. We target the `AsyncPlayerPreLoginEvent` to force the server's backend plugins (database-backed auth, geo-IP filters) to exhaust their **connection pools**. It’s the digital equivalent of ringing every doorbell in a skyscraper and running away before the security guards can check the cameras.
+
+### 🕵️ Wiretap: The Intelligence Officer
+Wiretap is the scalpel used to find the crack in the armor.
+
+*   **SLP Surveillance**: A non-intrusive scan that extracts the MOTD and player counts. It’s like checking a server’s pulse without them knowing you’re in the room.
+*   **Deep Protocol Probe**: We initiate a "Handshake State 2" (Login) to see how the server handles its laundry. We detect **Online/Offline Mode** (identifying "naked" servers), capture **RSA Key Sizes** (measuring hardware "bravery"), and map **Compression Thresholds**.
+*   **Stealth Infrastructure**: Built-in **SRV Resolution** and **SOCKS5 Proxy Rotation** ensure that your reconnaissance is as invisible as a ghost in a machine.
+
 ## 🚀 Getting Started (The 2-Minute Warning)
 
 1. **OS Tuning**: Optimizing your kernel for high-frequency spamming is a must.
