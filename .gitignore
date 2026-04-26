@@ -1,6 +1,6 @@
 # Binaries
-gaslighter
-mc-probe-bin
+/gaslighter
+/mc-probe-bin
 *.exe
 *.exe~
 *.dll
