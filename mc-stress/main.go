@@ -1022,7 +1022,12 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 			if !har {
 				// Wait for any packet back to ensure the server processed Login Start
 				conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-				readPacket(conn, false)
+				if _, _, err := readPacket(conn, false); err != nil {
+					if verbose {
+						fmt.Fprintf(os.Stderr, "\nprelogin read: %v\n", err)
+					}
+					droppedConns.Add(1)
+				}
 			}
 			conn.Close()
 			activeConns.Add(1) // Briefly count as active for metrics
