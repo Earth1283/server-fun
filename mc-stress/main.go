@@ -32,6 +32,7 @@ var (
 	bytesSent    atomic.Int64
 	droppedConns atomic.Int64
 	newConns     atomic.Int64
+	proxyCounter atomic.Uint64
 
 	// Mojang credentials for online-mode auth. If empty, encryption is attempted
 	// but Mojang join is skipped — the server will kick with "Failed to verify username!"
@@ -1205,6 +1206,7 @@ func init() {
 	f.Bool("prelogin", false, "enable pre-login spam mode (AsyncPlayerPreLoginEvent)")
 	f.Bool("har", false, "hit-and-run mode: don't wait for server response in pre-login mode")
 	f.StringP("proxies", "p", "", "path to .txt file with SOCKS5 proxies")
+	f.String("proxy-strategy", "random", "proxy selection strategy: random or round-robin")
 	viper.BindPFlags(f)
 }
 
