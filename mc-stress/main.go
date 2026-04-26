@@ -36,6 +36,8 @@ var (
 	accessToken string
 	playerUUID  string
 	login       bool
+	prelogin    bool
+	har         bool
 )
 
 var (
@@ -1091,6 +1093,8 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		accessToken, _ = cmd.Flags().GetString("access-token")
 		playerUUID, _ = cmd.Flags().GetString("player-uuid")
 		login, _ = cmd.Flags().GetBool("login")
+		prelogin, _ = cmd.Flags().GetBool("prelogin")
+		har, _ = cmd.Flags().GetBool("har")
 
 		if bloatSize > 255 {
 			return fmt.Errorf("--bloat-size max is 255 (Minecraft protocol limit)")
@@ -1129,6 +1133,8 @@ func init() {
 	f.StringP("access-token", "a", "", "Mojang access token (online-mode auth)")
 	f.StringP("player-uuid", "u", "", "Mojang player UUID matching the access token")
 	f.BoolP("login", "l", false, "automatically send /register commands after join")
+	f.Bool("prelogin", false, "enable pre-login spam mode (AsyncPlayerPreLoginEvent)")
+	f.Bool("har", false, "hit-and-run mode: don't wait for server response in pre-login mode")
 }
 
 func main() {
