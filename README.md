@@ -29,7 +29,7 @@ Requirements: Go 1.25+. Note that all compiled binaries are ignored by git to ke
 ### 1. Gaslighter (gaslighter)
 ```bash
 cd gaslighter
-go build -o ../gaslighter .
+go build -o ../gaslighter-bin .
 ```
 
 ### 2. Wiretap
@@ -65,7 +65,7 @@ Wiretap is the scalpel used to find the crack in the armor.
 2. **Ignite**:
    ```bash
    # Use the SRV record, go debug mode, and wait for the "connection refused" of victory.
-   ./gaslighter --debug play.server.com
+   ./gaslighter-bin --debug play.server.com
    ```
 
 ## 📜 Legalish Stuff

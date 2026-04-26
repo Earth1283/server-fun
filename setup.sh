@@ -36,9 +36,9 @@ if [ "$MAJOR" -lt 1 ] || ([ "$MAJOR" -eq 1 ] && [ "$MINOR" -lt 22 ]); then
 fi
 
 # 3. Build the tool
-echo -e "${GREEN}==> Building mc-stress (gaslighter)...${NC}"
-cd "$(dirname "$0")/mc-stress"
-go build -o ../gaslighter .
+echo -e "${GREEN}==> Building gaslighter...${NC}"
+cd "$(dirname "$0")/gaslighter"
+go build -o ../gaslighter-bin .
 cd ..
 
 # 4. Apply OS Optimizations
@@ -70,8 +70,8 @@ echo -e "${YELLOW}Note: System optimizations (sysctl) are TEMPORARY and will res
 echo "To make them permanent, add them to /etc/sysctl.conf"
 
 echo -e "\n${GREEN}Usage for Pre-Login Spam:${NC}"
-echo "  ./gaslighter <ip:port> --prelogin"
+echo "  ./gaslighter-bin <ip:port> --prelogin"
 echo -e "\n${GREEN}Usage for Maximum Throughput (Hit-and-Run):${NC}"
-echo "  ./gaslighter <ip:port> --prelogin --har -w 20000"
+echo "  ./gaslighter-bin <ip:port> --prelogin --har -w 20000"
 
-chmod +x gaslighter 2>/dev/null || true
+chmod +x gaslighter-bin 2>/dev/null || true

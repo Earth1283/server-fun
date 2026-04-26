@@ -1,6 +1,8 @@
 # Binaries
-/gaslighter
+/gaslighter-bin
+/wiretap-bin
 /mc-probe-bin
+/gaslighter
 *.exe
 *.exe~
 *.dll
