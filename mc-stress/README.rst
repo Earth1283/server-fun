@@ -199,6 +199,7 @@ Usage
           --har                        hit-and-run: don't wait for server response in pre-login mode
       -j, --join-delay duration        minimum gap between new connections (e.g. 4001ms)
           --prelogin                   pre-login spam mode: fire-and-forget login events
+      -p, --proxies string             path to a file containing proxies (ip:port, one per line)
       -a, --access-token string        Mojang access token for online-mode auth
       -u, --player-uuid string         Mojang player UUID matching the access token
       -v, --verbose                    print per-connection TCP errors
@@ -223,6 +224,10 @@ Online-mode server with Mojang credentials::
 
     ./gaslighter 192.168.1.10:25565 -a <access-token> -u <player-uuid>
 
+Attack through a list of proxies::
+
+    ./gaslighter 127.0.0.1:25565 -p proxies.txt
+
 Inspect a single connection before running the full attack::
 
     ./gaslighter --debug 127.0.0.1:25565
@@ -234,6 +239,27 @@ Pre-login spam attack (high frequency)::
 Maximum throughput pre-login spam (Hit-and-Run)::
 
     ./gaslighter 127.0.0.1:25565 --prelogin --har
+
+----
+
+Configuration File
+------------------
+
+The tool automatically searches for a configuration file named ``gaslighterc.toml`` in:
+
+1. ``./gaslighterc.toml`` (current directory)
+2. ``~/gaslighterc.toml`` (home directory)
+
+If both exist, settings in the local file override those in the home directory.
+CLI flags always take precedence over configuration file settings.
+
+Example ``gaslighterc.toml``:
+
+.. code-block:: toml
+
+    proxies = "proxies.txt"
+    workers = 5000
+    join-delay = "1s"
 
 ----
 
