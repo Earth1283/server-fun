@@ -2,7 +2,7 @@
 
 A collection of "stress testing" (read: server-breaking) utilities for the modern, Java-weary netrunner. If you've ever felt that a Minecraft server was enjoying its RAM a bit too much, you're in the right place.
 
-## The Crown Jewel: **Gaslighter** (`mc-stress`)
+## The Crown Jewel: **Gaslighter** (`gaslighter`)
 
 The digital equivalent of a Slowloris attack, but with a specific grudge against the **G1 Garbage Collector**. While other tools try to drown the network, **Gaslighter** targets the server's soul: its heap.
 
@@ -26,16 +26,16 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 
 Requirements: Go 1.25+. Note that all compiled binaries are ignored by git to keep the workspace clean.
 
-### 1. Gaslighter (mc-stress)
+### 1. Gaslighter (gaslighter)
 ```bash
-cd mc-stress
+cd gaslighter
 go build -o ../gaslighter .
 ```
 
-### 2. MC-Probe
+### 2. Wiretap
 ```bash
-cd mc-probe
-go build -o ../mc-probe-bin .
+cd wiretap
+go build -o ../wiretap-bin .
 ```
 
 ## 🚀 Getting Started (The 2-Minute Warning)
