@@ -1144,17 +1144,42 @@ var rootCmd = &cobra.Command{
 promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		target := args[0]
+		inputTarget := args[0]
+		var target string
+		var port uint16
 
-		_, portStr, err := net.SplitHostPort(target)
+		_, portStr, err := net.SplitHostPort(inputTarget)
 		if err != nil {
-			return fmt.Errorf("invalid target %q: %w", target, err)
+			// If SplitHostPort fails, it might be because the port is missing.
+			// Handle SRV resolution or default port 25565.
+			if net.ParseIP(inputTarget) != nil {
+				// It's a raw IP without a port.
+				target = net.JoinHostPort(inputTarget, "25565")
+				port = 25565
+				fmt.Printf("Target is raw IP, defaulting to port 25565: %s\n", target)
+			} else {
+				// It's a hostname without a port. Try SRV lookup.
+				_, addrs, srvErr := net.LookupSRV("minecraft", "tcp", inputTarget)
+				if srvErr == nil && len(addrs) > 0 {
+					target = net.JoinHostPort(addrs[0].Target, strconv.Itoa(int(addrs[0].Port)))
+					port = addrs[0].Port
+					fmt.Printf("Resolved SRV record: %s -> %s:%d\n", inputTarget, addrs[0].Target, addrs[0].Port)
+				} else {
+					// Fallback to default port
+					target = net.JoinHostPort(inputTarget, "25565")
+					port = 25565
+					fmt.Printf("No SRV record found for %s, falling back to port 25565\n", inputTarget)
+				}
+			}
+		} else {
+			// Explicit port provided
+			target = inputTarget
+			portNum, err := strconv.ParseUint(portStr, 10, 16)
+			if err != nil {
+				return fmt.Errorf("invalid port: %w", err)
+			}
+			port = uint16(portNum)
 		}
-		portNum, err := strconv.ParseUint(portStr, 10, 16)
-		if err != nil {
-			return fmt.Errorf("invalid port: %w", err)
-		}
-		port := uint16(portNum)
 
 		workers, _ := cmd.Flags().GetInt("workers")
 		bloatSize, _ := cmd.Flags().GetInt("bloat-size")

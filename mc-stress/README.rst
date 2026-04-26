@@ -190,7 +190,7 @@ Usage
 
 .. code-block:: text
 
-    gaslighter <ip:port> [flags]
+    gaslighter <ip[:port] | hostname> [flags]
 
     Flags:
       -s, --bloat-size int             handshake server-address string length (max 255) (default 255)
@@ -212,6 +212,10 @@ Examples
 Default run against an offline-mode server::
 
     ./gaslighter 127.0.0.1:25565
+
+SRV resolution (resolves _minecraft._tcp.play.server.com)::
+
+    ./gaslighter play.server.com
 
 Push harder — 50 000 workers, verbose errors::
 
