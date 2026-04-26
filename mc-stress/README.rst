@@ -200,6 +200,7 @@ Usage
       -j, --join-delay duration        minimum gap between new connections (e.g. 4001ms)
           --prelogin                   pre-login spam mode: fire-and-forget login events
       -p, --proxies string             path to a file containing proxies (ip:port, one per line)
+          --proxy-strategy string      proxy selection strategy: random or round-robin (default "random")
       -a, --access-token string        Mojang access token for online-mode auth
       -u, --player-uuid string         Mojang player UUID matching the access token
       -v, --verbose                    print per-connection TCP errors
@@ -258,6 +259,7 @@ Example ``gaslighterc.toml``:
 .. code-block:: toml
 
     proxies = "proxies.txt"
+    proxy-strategy = "round-robin"
     workers = 5000
     join-delay = "1s"
 
