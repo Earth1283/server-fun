@@ -1,6 +1,6 @@
 gaslighter
 main
 mc-stress/test/
-docs/superpowers/
+docs/*
 .gemini/
 .claude/
