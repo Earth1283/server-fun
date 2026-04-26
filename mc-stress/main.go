@@ -111,7 +111,18 @@ func getDialer() (proxy.Dialer, error) {
 	if len(proxyPool) == 0 {
 		return baseDialer, nil
 	}
-	proxyAddr := proxyPool[rand.Intn(len(proxyPool))]
+
+	var proxyAddr string
+	strategy := viper.GetString("proxy-strategy")
+	if strategy == "round-robin" {
+		counter := proxyCounter.Add(1)
+		idx := (counter - 1) % uint64(len(proxyPool))
+		proxyAddr = proxyPool[idx]
+	} else {
+		// default to random
+		proxyAddr = proxyPool[rand.Intn(len(proxyPool))]
+	}
+
 	return proxy.SOCKS5("tcp", proxyAddr, nil, baseDialer)
 }
 
