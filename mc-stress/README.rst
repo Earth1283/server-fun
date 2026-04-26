@@ -65,6 +65,35 @@ The attack proceeds in four phases:
 
 ----
 
+Pre-Login Spam Mode
+-------------------
+
+The ``--prelogin`` flag enables a high-frequency spamming attack targeting the
+``AsyncPlayerPreLoginEvent`` on Paper/Spigot servers. Instead of holding
+connections open to bloat the heap over time, this mode focuses on saturating
+the server's login processing pipeline:
+
+1. **Connect & Handshake**
+   The worker opens a TCP connection and sends the Handshake and ``Login Start``
+   packets.
+2. **Trigger Event**
+   The server receives ``Login Start`` and fires the ``AsyncPlayerPreLoginEvent``.
+   Plugins (like LuckPerms, Geyser, or anti-bot filters) often hook into this
+   event to perform database lookups or complex logic.
+3. **Immediate Cycle**
+   By default, the worker waits for a server response (like ``Login Success`` or
+   ``Encryption Request``) before closing the connection and reconnecting.
+   This ensures the event is fully processed on the server side.
+
+**Hit-and-Run (--har)**
+When combined with ``--prelogin``, the ``--har`` flag disables waiting for any
+server response. The worker sends the initial packets and immediately closes
+the socket. This maximizes throughput, allowing a single attacker to trigger
+thousands of pre-login events per second, potentially DOSing the server's
+authentication threads or backend databases.
+
+----
+
 Encryption Support
 ------------------
 
@@ -167,7 +196,9 @@ Usage
       -s, --bloat-size int             handshake server-address string length (max 255) (default 255)
           --debug                      single-connection debug mode with colored packet log
       -d, --dribble-interval duration  interval between keep-alive bytes, online-mode fallback (default 5s)
+          --har                        hit-and-run: don't wait for server response in pre-login mode
       -j, --join-delay duration        minimum gap between new connections (e.g. 4001ms)
+          --prelogin                   pre-login spam mode: fire-and-forget login events
       -a, --access-token string        Mojang access token for online-mode auth
       -u, --player-uuid string         Mojang player UUID matching the access token
       -v, --verbose                    print per-connection TCP errors
@@ -195,6 +226,14 @@ Online-mode server with Mojang credentials::
 Inspect a single connection before running the full attack::
 
     ./gaslighter --debug 127.0.0.1:25565
+
+Pre-login spam attack (high frequency)::
+
+    ./gaslighter 127.0.0.1:25565 --prelogin
+
+Maximum throughput pre-login spam (Hit-and-Run)::
+
+    ./gaslighter 127.0.0.1:25565 --prelogin --har
 
 ----
 
