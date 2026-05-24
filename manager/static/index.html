@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>server-fun — Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #09090b;
+  --surface:   #18181b;
+  --surface2:  #27272a;
+  --border:    #3f3f46;
+  --text:      #fafafa;
+  --muted:     #a1a1aa;
+  --dimmed:    #52525b;
+  --accent:    #818cf8;
+  --accent-bg: rgba(129,140,248,.12);
+  --success:   #4ade80;
+  --warning:   #fb923c;
+  --danger:    #f87171;
+  --r:         8px;
+  --r-sm:      5px;
+  --sidebar:   224px;
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Sidebar ── */
+#sidebar {
+  width: var(--sidebar);
+  min-width: var(--sidebar);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 10px;
+  gap: 4px;
+  position: relative;
+  z-index: 20;
+  transition: transform .2s ease;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.logo-mark {
+  width: 30px;
+  height: 30px;
+  background: var(--accent);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-mark svg { display: block; }
+
+.logo-name {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+
+.logo-sub {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+
+nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background .1s, color .1s;
+}
+
+.nav-btn:hover { background: var(--surface2); color: var(--text); }
+.nav-btn.active { background: var(--accent-bg); color: var(--accent); }
+.nav-btn .nav-icon { width: 15px; height: 15px; flex-shrink: 0; opacity: .7; }
+.nav-btn.active .nav-icon { opacity: 1; }
+
+.nav-tag {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface2);
+  color: var(--dimmed);
+}
+
+.sidebar-footer {
+  padding: 10px 10px 0;
+  font-size: 11px;
+  color: var(--dimmed);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Main ── */
+#main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Panels ── */
+.panel { display: none; flex-direction: column; }
+.panel.active { display: flex; }
+
+.panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 32px;
+  max-width: 880px;
+  width: 100%;
+}
+
+.panel-hd { display: flex; flex-direction: column; gap: 4px; }
+.panel-hd h1 { font-size: 19px; font-weight: 600; letter-spacing: -.025em; }
+.panel-hd p { color: var(--muted); font-size: 13px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+
+.card-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Form ── */
+.field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
+.field.narrow { flex: 0 0 110px; min-width: unset; }
+.field.mid { flex: 0 0 170px; }
+
+label.fl {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+input[type="text"], input[type="number"], input:not([type]) {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(129,140,248,.15);
+}
+
+input::placeholder { color: var(--dimmed); }
+input:disabled { opacity: .45; cursor: not-allowed; }
+
+select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .1s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.btn:disabled { opacity: .38; cursor: not-allowed; pointer-events: none; }
+
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #6366f1; border-color: #6366f1; }
+
+.btn-secondary { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.btn-secondary:hover { background: var(--border); }
+
+.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-danger:hover { background: #ef4444; border-color: #ef4444; }
+
+.btn-ghost {
+  background: none; color: var(--muted); border-color: transparent;
+  padding: 5px 9px; font-size: 12px;
+}
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+/* ── Action row ── */
+.action-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── Status badge ── */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dimmed);
+  flex-shrink: 0;
+  transition: background .2s;
+}
+
+.dot.connected { background: var(--success); box-shadow: 0 0 0 3px rgba(74,222,128,.2); }
+.dot.running   { background: var(--danger); box-shadow: 0 0 0 3px rgba(248,113,113,.2); animation: blink 1.4s ease infinite; }
+.dot.pending   { background: var(--warning); animation: blink 1s ease infinite; }
+
+@keyframes blink {
+  0%,100% { opacity:1; }
+  50%      { opacity:.35; }
+}
+
+/* ── Segmented control ── */
+.seg {
+  display: inline-flex;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  gap: 2px;
+}
+
+.seg-btn {
+  padding: 5px 13px;
+  border-radius: 3px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .1s;
+}
+
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+
+/* ── Checkbox ── */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.check-row input[type="checkbox"] {
+  width: 14px; height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Mode options (shown/hidden per mode) ── */
+.mode-extra { display: none; }
+.mode-extra.on { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+
+/* ── Metrics grid ── */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.metric {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+
+.metric-lbl {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.metric-val {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Terminal ── */
+.term-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.term-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.term-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.term-body {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.75;
+  padding: 14px 16px;
+  background: #07070a;
+  min-height: 180px;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.term-line { display: block; }
+
+.term-empty {
+  color: var(--dimmed);
+  font-style: italic;
+  user-select: none;
+}
+
+/* ── REPL input row ── */
+.repl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.repl-prompt {
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.repl-in {
+  flex: 1;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+  color: var(--text) !important;
+  outline: none;
+}
+
+.repl-in::placeholder { color: var(--dimmed); }
+.repl-in:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Hamburger ── */
+#hamburger {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 50;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  cursor: pointer;
+  padding: 7px 9px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+#overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 15;
+}
+
+/* ── Responsive ── */
+@media (max-width: 780px) {
+  #hamburger { display: block; }
+
+  #sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    height: 100%;
+    transform: translateX(-100%);
+    z-index: 30;
+    transition: transform .2s ease;
+  }
+  #sidebar.open { transform: translateX(0); }
+  #overlay.open { display: block; }
+
+  #main { padding-top: 42px; }
+
+  .panel-inner { padding: 16px; gap: 14px; }
+
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+
+  .field.narrow, .field.mid { flex: 1 1 120px; }
+}
+
+@media (max-width: 500px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .metric-val { font-size: 18px; }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dimmed); }
+</style>
+</head>
+<body>
+
+<button id="hamburger" aria-label="Open menu">☰</button>
+<div id="overlay"></div>
+
+<aside id="sidebar">
+  <div class="logo">
+    <div class="logo-mark">
+      <!-- 2×2 grid mark -->
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="1" width="6" height="6" rx="1.5" fill="white" opacity=".95"/>
+        <rect x="9" y="1" width="6" height="6" rx="1.5" fill="white" opacity=".55"/>
+        <rect x="1" y="9" width="6" height="6" rx="1.5" fill="white" opacity=".55"/>
+        <rect x="9" y="9" width="6" height="6" rx="1.5" fill="white" opacity=".95"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-name">server-fun</div>
+      <div class="logo-sub">manager</div>
+    </div>
+  </div>
+
+  <nav>
+    <button class="nav-btn active" data-panel="wiretap">
+      <!-- antenna / signal waves -->
+      <svg class="nav-icon" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <circle cx="7.5" cy="7.5" r="1.5"/>
+        <path d="M5 10a3.5 3.5 0 0 1 0-5M10 5a3.5 3.5 0 0 1 0 5"/>
+        <path d="M3 12a6 6 0 0 1 0-9M12 3a6 6 0 0 1 0 9"/>
+      </svg>
+      Wiretap
+      <span class="nav-tag">recon</span>
+    </button>
+
+    <button class="nav-btn" data-panel="pluginscanner">
+      <!-- magnify -->
+      <svg class="nav-icon" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <circle cx="6.5" cy="6.5" r="4.5"/>
+        <path d="m10.5 10.5 3 3"/>
+      </svg>
+      Pluginscanner
+      <span class="nav-tag">enum</span>
+    </button>
+
+    <button class="nav-btn" data-panel="gaslighter">
+      <!-- lightning -->
+      <svg class="nav-icon" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.5 1.5 6 7.5h4L5.5 13.5"/>
+      </svg>
+      Gaslighter
+      <span class="nav-tag">stress</span>
+    </button>
+  </nav>
+
+  <div class="sidebar-footer">v0.1 · localhost:8080</div>
+</aside>
+
+<main id="main">
+
+  <!-- ═══ WIRETAP ═══════════════════════════════════════════════════════ -->
+  <div class="panel active" id="panel-wiretap">
+  <div class="panel-inner">
+
+    <div class="panel-hd">
+      <h1>Wiretap</h1>
+      <p>Check the lock before you kick the door. Two-phase recon: SLP ping then a deep protocol probe.</p>
+    </div>
+
+    <div class="card">
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label class="fl">Target server</label>
+          <input id="wt-target" type="text" placeholder="play.example.com  or  play.example.com:25565">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field mid">
+          <label class="fl">SOCKS5 proxies</label>
+          <input id="wt-proxies" type="text" placeholder="proxies.txt (optional)">
+        </div>
+        <div class="field narrow">
+          <label class="fl">Strategy</label>
+          <select id="wt-strategy">
+            <option value="random">Random</option>
+            <option value="round-robin">Round-robin</option>
+          </select>
+        </div>
+      </div>
+      <div class="action-row">
+        <button id="wt-run" class="btn btn-primary">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4.5"/><path d="M8.5 10.5 11 13"/></svg>
+          Probe Server
+        </button>
+      </div>
+    </div>
+    </div>
+
+    <div class="term-wrap">
+      <div class="term-hd">
+        <span class="term-title">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 3h10M1 6h7M1 9h5"/></svg>
+          Output
+        </span>
+        <button id="wt-clear" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="wt-out" class="term-body">
+        <span class="term-empty">Run a probe to see output here.</span>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+  <!-- ═══ PLUGINSCANNER ════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-pluginscanner">
+  <div class="panel-inner">
+
+    <div class="panel-hd">
+      <h1>Pluginscanner</h1>
+      <p>Map the software stack before you touch it. Connects to Play state, then enumerates plugins via tab-complete.</p>
+    </div>
+
+    <div class="card">
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label class="fl">Target server</label>
+          <input id="ps-target" type="text" placeholder="play.example.com">
+        </div>
+        <div class="field narrow">
+          <label class="fl">Timeout</label>
+          <input id="ps-timeout" type="text" value="5s">
+        </div>
+        <div class="field mid">
+          <label class="fl">SOCKS5 proxies</label>
+          <input id="ps-proxies" type="text" placeholder="proxies.txt (optional)">
+        </div>
+      </div>
+      <div class="action-row">
+        <button id="ps-connect" class="btn btn-primary">Connect</button>
+        <button id="ps-disconnect" class="btn btn-secondary" disabled>Disconnect</button>
+        <div class="status">
+          <div id="ps-dot" class="dot"></div>
+          <span id="ps-label">Disconnected</span>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div class="term-wrap">
+      <div class="term-hd">
+        <span class="term-title">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1" y="1" width="10" height="10" rx="2"/><path d="M4 6h4M6 4v4"/></svg>
+          Session
+        </span>
+        <button id="ps-clear" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="ps-out" class="term-body">
+        <span class="term-empty">Connect to a server to start an interactive session.</span>
+      </div>
+      <div class="repl-row">
+        <span class="repl-prompt">›</span>
+        <input id="ps-in" class="repl-in" placeholder="scan  /  probe authme  /  essentials:" disabled>
+        <button id="ps-send" class="btn btn-secondary" style="padding:5px 11px;font-size:12px;" disabled>Send</button>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+  <!-- ═══ GASLIGHTER ════════════════════════════════════════════════════ -->
+  <div class="panel" id="panel-gaslighter">
+  <div class="panel-inner">
+
+    <div class="panel-hd">
+      <h1>Gaslighter</h1>
+      <p>You have to feel bad for the server. It has no idea what's about to happen.</p>
+    </div>
+
+    <div class="card">
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label class="fl">Target server</label>
+          <input id="gl-target" type="text" placeholder="play.example.com">
+        </div>
+        <div class="field narrow">
+          <label class="fl">Workers</label>
+          <input id="gl-workers" type="number" value="10000" min="1">
+        </div>
+        <div class="field narrow">
+          <label class="fl">Bloat size</label>
+          <input id="gl-bloat" type="number" value="255" min="1" max="255">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field narrow">
+          <label class="fl">Dribble interval</label>
+          <input id="gl-dribble" type="text" value="5s">
+        </div>
+        <div class="field narrow">
+          <label class="fl">Join delay</label>
+          <input id="gl-join-delay" type="text" placeholder="4001ms">
+        </div>
+        <div class="field mid">
+          <label class="fl">SOCKS5 proxies</label>
+          <input id="gl-proxies" type="text" placeholder="proxies.txt (optional)">
+        </div>
+      </div>
+
+      <div>
+        <label class="fl" style="display:block;margin-bottom:8px;">Attack mode</label>
+        <div class="seg" role="group">
+          <button class="seg-btn active" data-mode="standard">Standard</button>
+          <button class="seg-btn" data-mode="prelogin">Pre-login</button>
+          <button class="seg-btn" data-mode="stall">Stall</button>
+        </div>
+      </div>
+
+      <div id="gl-prelogin-extra" class="mode-extra">
+        <label class="check-row">
+          <input type="checkbox" id="gl-har">
+          <span>Hit-and-run — disconnect immediately after Login Start</span>
+        </label>
+      </div>
+
+      <div id="gl-stall-extra" class="mode-extra">
+        <div class="field narrow">
+          <label class="fl">Stall duration</label>
+          <input id="gl-stall-dur" type="text" value="27s">
+        </div>
+      </div>
+
+      <label class="check-row">
+        <input type="checkbox" id="gl-verbose">
+        <span>Verbose — print per-connection TCP errors</span>
+      </label>
+
+      <div class="action-row">
+        <button id="gl-start" class="btn btn-danger">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="3,1 11,6 3,11"/></svg>
+          Start
+        </button>
+        <button id="gl-stop" class="btn btn-secondary" disabled>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+          Stop
+        </button>
+        <div class="status">
+          <div id="gl-dot" class="dot"></div>
+          <span id="gl-label">Idle</span>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div id="gl-metrics" class="metrics" style="display:none;">
+      <div class="metric">
+        <div class="metric-lbl">Active</div>
+        <div id="gm-active" class="metric-val">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-lbl">New / s</div>
+        <div id="gm-newps" class="metric-val">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-lbl">Dropped</div>
+        <div id="gm-dropped" class="metric-val">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-lbl">Sent</div>
+        <div id="gm-sent" class="metric-val">—</div>
+      </div>
+    </div>
+
+    <div class="term-wrap">
+      <div class="term-hd">
+        <span class="term-title">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 3h10M1 6h7M1 9h5"/></svg>
+          Output
+        </span>
+        <button id="gl-clear" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="gl-out" class="term-body">
+        <span class="term-empty">Start a run to see live output.</span>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+</main>
+
+<script>
+'use strict';
+
+// ── Navigation ────────────────────────────────────────────────────────────
+const navBtns  = document.querySelectorAll('.nav-btn');
+const panels   = document.querySelectorAll('.panel');
+const sidebar  = document.getElementById('sidebar');
+const overlay  = document.getElementById('overlay');
+const hamburger = document.getElementById('hamburger');
+
+navBtns.forEach(btn => btn.addEventListener('click', () => {
+  navBtns.forEach(b => b.classList.remove('active'));
+  panels.forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
+  closeSidebar();
+}));
+
+hamburger.addEventListener('click', () => {
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('open');
+});
+overlay.addEventListener('click', closeSidebar);
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('open');
+}
+
+// ── ANSI → HTML ────────────────────────────────────────────────────────────
+const ANSI_COLORS = {
+  '30':'#71717a','31':'#f87171','32':'#4ade80','33':'#fbbf24',
+  '34':'#818cf8','35':'#c084fc','36':'#22d3ee','37':'#d4d4d8',
+  '90':'#52525b','91':'#fca5a5','92':'#86efac','93':'#fde68a',
+  '94':'#a5b4fc','95':'#d8b4fe','96':'#67e8f9','97':'#ffffff',
+};
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function ansiToHtml(raw) {
+  // Strip cursor-movement and line-clear sequences (\033[nA, \033[2K, etc.)
+  let text = raw.replace(/\x1b\[\d*[ABCDEFGHJKSTf]/g, '').replace(/\r/g,'');
+
+  const parts = text.split('\x1b[');
+  let out = esc(parts[0]);
+  let open = false;
+
+  for (let i = 1; i < parts.length; i++) {
+    const m = parts[i].match(/^([\d;]*)m([\s\S]*)/);
+    if (!m) { out += esc(parts[i]); continue; }
+
+    const codes = m[1].split(';').filter(c => c !== '');
+    const rest  = m[2];
+
+    if (open) { out += '</span>'; open = false; }
+
+    // Pure reset
+    if (!codes.length || (codes.length === 1 && codes[0] === '0')) {
+      out += esc(rest);
+      continue;
+    }
+
+    const styles = [];
+    let bold = false;
+    for (const c of codes) {
+      if (c === '0')                  { styles.length = 0; bold = false; }
+      else if (c === '1')             bold = true;
+      else if (c === '2')             styles.push('opacity:.55');
+      else if (ANSI_COLORS[c])        styles.push('color:' + ANSI_COLORS[c]);
+    }
+    if (bold) styles.push('font-weight:700');
+
+    if (styles.length) {
+      out += `<span style="${styles.join(';')}">${esc(rest)}`;
+      open = true;
+    } else {
+      out += esc(rest);
+    }
+  }
+
+  if (open) out += '</span>';
+  return out;
+}
+
+// ── Terminal helpers ───────────────────────────────────────────────────────
+function clearTerm(el, msg) {
+  el.innerHTML = `<span class="term-empty">${esc(msg)}</span>`;
+}
+
+function appendLine(el, text) {
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+  const empty = el.querySelector('.term-empty');
+  if (empty) empty.remove();
+  const line = document.createElement('div');
+  line.className = 'term-line';
+  line.innerHTML = ansiToHtml(text);
+  el.appendChild(line);
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+// ── SSE reader (works with POST via fetch + ReadableStream) ────────────────
+async function readSSE(response, onLine, onDone, signal) {
+  const reader  = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  try {
+    while (true) {
+      if (signal?.aborted) break;
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop(); // last (possibly incomplete) block
+
+      for (const block of blocks) {
+        let evType = 'message';
+        let data   = null;
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event: ')) evType = line.slice(7).trim();
+          else if (line.startsWith('data: '))  data  = line.slice(6);
+        }
+        if (data === null) continue;
+        if (evType === 'done') { onDone?.(); return; }
+        try { onLine(JSON.parse(data)); }
+        catch { onLine(data); }
+      }
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') console.error('SSE error', e);
+  } finally {
+    reader.cancel();
+    onDone?.();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WIRETAP
+// ═══════════════════════════════════════════════════════════════════════════
+const wtOut  = document.getElementById('wt-out');
+const wtBtn  = document.getElementById('wt-run');
+let wtAbort  = null;
+
+wtBtn.addEventListener('click', async () => {
+  const target = document.getElementById('wt-target').value.trim();
+  if (!target) { document.getElementById('wt-target').focus(); return; }
+
+  wtAbort?.abort();
+  wtAbort = new AbortController();
+  wtBtn.disabled = true;
+  wtBtn.textContent = 'Probing…';
+  clearTerm(wtOut, '');
+
+  try {
+    const res = await fetch('/api/wiretap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target,
+        proxies: document.getElementById('wt-proxies').value.trim(),
+        proxyStrategy: document.getElementById('wt-strategy').value,
+      }),
+      signal: wtAbort.signal,
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await readSSE(res, l => appendLine(wtOut, l), null, wtAbort.signal);
+  } catch(e) {
+    if (e.name !== 'AbortError') appendLine(wtOut, '\x1b[31merror: ' + e.message + '\x1b[0m');
+  } finally {
+    wtBtn.disabled = false;
+    wtBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6" cy="6" r="4.5"/><path d="M8.5 10.5 11 13"/></svg> Probe Server`;
+  }
+});
+
+document.getElementById('wt-clear').addEventListener('click', () => {
+  clearTerm(wtOut, 'Run a probe to see output here.');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PLUGINSCANNER
+// ═══════════════════════════════════════════════════════════════════════════
+const psOut  = document.getElementById('ps-out');
+const psDot  = document.getElementById('ps-dot');
+const psLbl  = document.getElementById('ps-label');
+const psIn   = document.getElementById('ps-in');
+const psSend = document.getElementById('ps-send');
+const psConn = document.getElementById('ps-connect');
+const psDis  = document.getElementById('ps-disconnect');
+let psId     = null;
+let psAbort  = null;
+
+function setPsState(state) {
+  psDot.className = 'dot';
+  if (state === 'connected') {
+    psDot.classList.add('connected');
+    psLbl.textContent   = 'Connected';
+    psIn.disabled       = false;
+    psSend.disabled     = false;
+    psConn.disabled     = true;
+    psDis.disabled      = false;
+  } else if (state === 'connecting') {
+    psDot.classList.add('pending');
+    psLbl.textContent   = 'Connecting…';
+    psIn.disabled       = true;
+    psSend.disabled     = true;
+    psConn.disabled     = true;
+    psDis.disabled      = false;
+  } else {
+    psLbl.textContent   = 'Disconnected';
+    psIn.disabled       = true;
+    psSend.disabled     = true;
+    psConn.disabled     = false;
+    psDis.disabled      = true;
+  }
+}
+
+psConn.addEventListener('click', async () => {
+  const target = document.getElementById('ps-target').value.trim();
+  if (!target) { document.getElementById('ps-target').focus(); return; }
+
+  setPsState('connecting');
+  clearTerm(psOut, '');
+
+  try {
+    const res = await fetch('/api/pluginscanner/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target,
+        timeout: document.getElementById('ps-timeout').value.trim() || '5s',
+        proxies: document.getElementById('ps-proxies').value.trim(),
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const { id } = await res.json();
+    psId = id;
+    setPsState('connected');
+    psIn.focus();
+
+    psAbort = new AbortController();
+    const stream = await fetch('/api/pluginscanner/stream?id=' + id, {
+      signal: psAbort.signal,
+    });
+    await readSSE(stream, l => appendLine(psOut, l), () => {
+      psId = null;
+      setPsState('disconnected');
+    }, psAbort.signal);
+  } catch(e) {
+    if (e.name !== 'AbortError') appendLine(psOut, '\x1b[31merror: ' + e.message + '\x1b[0m');
+    psId = null;
+    setPsState('disconnected');
+  }
+});
+
+psDis.addEventListener('click', async () => {
+  const id = psId;
+  psId = null;
+  psAbort?.abort();
+  if (id) {
+    try { await fetch('/api/pluginscanner/stop?id=' + id, { method: 'POST' }); } catch {}
+  }
+  setPsState('disconnected');
+});
+
+async function psSendInput() {
+  const text = psIn.value.trim();
+  if (!text || !psId) return;
+  psIn.value = '';
+  try {
+    await fetch('/api/pluginscanner/input?id=' + psId, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch {}
+}
+
+psSend.addEventListener('click', psSendInput);
+psIn.addEventListener('keydown', e => { if (e.key === 'Enter') psSendInput(); });
+
+document.getElementById('ps-clear').addEventListener('click', () => {
+  clearTerm(psOut, 'Connect to a server to start an interactive session.');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GASLIGHTER
+// ═══════════════════════════════════════════════════════════════════════════
+const glOut   = document.getElementById('gl-out');
+const glDot   = document.getElementById('gl-dot');
+const glLbl   = document.getElementById('gl-label');
+const glMetrics = document.getElementById('gl-metrics');
+const glStart = document.getElementById('gl-start');
+const glStop  = document.getElementById('gl-stop');
+let glId      = null;
+let glAbort   = null;
+let glMode    = 'standard';
+
+// Segmented mode control
+document.querySelectorAll('.seg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    glMode = btn.dataset.mode;
+    document.getElementById('gl-prelogin-extra').classList.toggle('on', glMode === 'prelogin');
+    document.getElementById('gl-stall-extra').classList.toggle('on', glMode === 'stall');
+  });
+});
+
+function setGlState(state) {
+  glDot.className = 'dot';
+  if (state === 'running') {
+    glDot.classList.add('running');
+    glLbl.textContent = 'Running';
+    glStart.disabled  = true;
+    glStop.disabled   = false;
+    glMetrics.style.display = 'grid';
+  } else {
+    glLbl.textContent = 'Idle';
+    glStart.disabled  = false;
+    glStop.disabled   = true;
+  }
+}
+
+// Parse metrics from gaslighter output lines
+const metricsRx = /Active:\s*([\d,]+)\s*\|\s*New\/s:\s*([\d,]+)\s*\|\s*Dropped:\s*([\d,]+)\s*\|\s*Sent:\s*([\d.]+\s*\S+)/;
+
+function tryUpdateMetrics(line) {
+  const m = metricsRx.exec(line);
+  if (!m) return;
+  document.getElementById('gm-active').textContent  = m[1];
+  document.getElementById('gm-newps').textContent   = m[2];
+  document.getElementById('gm-dropped').textContent = m[3];
+  document.getElementById('gm-sent').textContent    = m[4];
+}
+
+glStart.addEventListener('click', async () => {
+  const target = document.getElementById('gl-target').value.trim();
+  if (!target) { document.getElementById('gl-target').focus(); return; }
+
+  clearTerm(glOut, '');
+  setGlState('running');
+
+  const body = {
+    target,
+    workers:         parseInt(document.getElementById('gl-workers').value)   || 10000,
+    bloatSize:       parseInt(document.getElementById('gl-bloat').value)     || 255,
+    dribbleInterval: document.getElementById('gl-dribble').value.trim()      || '5s',
+    joinDelay:       document.getElementById('gl-join-delay').value.trim(),
+    verbose:         document.getElementById('gl-verbose').checked,
+    prelogin:        glMode === 'prelogin',
+    har:             glMode === 'prelogin' && document.getElementById('gl-har').checked,
+    stall:           glMode === 'stall',
+    stallDuration:   glMode === 'stall' ? document.getElementById('gl-stall-dur').value.trim() : '',
+    proxies:         document.getElementById('gl-proxies').value.trim(),
+  };
+
+  try {
+    const res = await fetch('/api/gaslighter/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const { id } = await res.json();
+    glId = id;
+
+    glAbort = new AbortController();
+    const stream = await fetch('/api/gaslighter/stream?id=' + id, {
+      signal: glAbort.signal,
+    });
+
+    await readSSE(stream, l => {
+      tryUpdateMetrics(l);
+      appendLine(glOut, l);
+    }, () => {
+      glId = null;
+      setGlState('idle');
+    }, glAbort.signal);
+  } catch(e) {
+    if (e.name !== 'AbortError') appendLine(glOut, '\x1b[31merror: ' + e.message + '\x1b[0m');
+    glId = null;
+    setGlState('idle');
+  }
+});
+
+glStop.addEventListener('click', async () => {
+  const id = glId;
+  glId = null;
+  glAbort?.abort();
+  if (id) {
+    try { await fetch('/api/gaslighter/stop?id=' + id, { method: 'POST' }); } catch {}
+  }
+  setGlState('idle');
+});
+
+document.getElementById('gl-clear').addEventListener('click', () => {
+  clearTerm(glOut, 'Start a run to see live output.');
+});
+</script>
+</body>
+</html>

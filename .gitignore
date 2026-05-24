@@ -3,6 +3,7 @@
 /wiretap-bin
 /mc-probe-bin
 /pluginscanner-bin
+/manager-bin
 *.exe
 *.exe~
 *.dll
