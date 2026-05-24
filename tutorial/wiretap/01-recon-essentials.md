@@ -15,6 +15,17 @@ Offline-mode servers (where `online-mode=false`) are the holy grail of chaos eng
 - **"Auth Mode: Offline"**: The target is wide open. You can spawn 50,000 workers with zero credentials and they will all reach the Play state. This is what we call a "Target Rich Environment."
 - **"Compression: Threshold 256"**: This tells you the server is using Netty's compression layer. Good to know for CPU-bound attacks.
 
+### Step 3: What Comes Next
+
+Once you know the server is in Offline Mode, the natural next step is `pluginscanner`. Wiretap tells you the door is unlocked; pluginscanner reads the label on every box inside.
+
+```bash
+./pluginscanner-bin target.com
+# > scan
+```
+
+See [Plugin Enumeration](../pluginscanner/01-plugin-enumeration.md) for what to do with the results.
+
 ### Social Excuse of the Day
 If someone sees you probing:
 "I noticed some **asymmetric latency jitter** in my route to your IP. I'm just running a **TCP Window Scaling audit** to see if your ISP is throttling the Minecraft protocol. You're welcome!"
