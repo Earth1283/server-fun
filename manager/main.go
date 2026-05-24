@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -78,12 +79,49 @@ func combineOutputs(stdout, stderr io.Reader) io.Reader {
 	return pr
 }
 
+// scanCRLF is like bufio.ScanLines but also splits on bare \r so that
+// gaslighter's in-place metric updates ("\r\033[K...") are flushed immediately.
+func scanCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == '\n' {
+			tok := data[:i]
+			if len(tok) > 0 && tok[len(tok)-1] == '\r' {
+				tok = tok[:len(tok)-1]
+			}
+			return i + 1, tok, nil
+		}
+		if b == '\r' {
+			if i+1 < len(data) {
+				if data[i+1] == '\n' {
+					return i + 2, data[:i], nil // \r\n
+				}
+				return i + 1, data[:i], nil // bare \r — split here
+			}
+			if !atEOF {
+				return 0, nil, nil // wait: might be \r\n
+			}
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), bytes.TrimRight(data, "\r\n"), nil
+	}
+	return 0, nil, nil
+}
+
 // startReader feeds subprocess output into the session line buffer.
 func startReader(s *Session, r io.Reader) {
 	go func() {
 		scanner := bufio.NewScanner(r)
 		scanner.Buffer(make([]byte, 256*1024), 256*1024)
+		scanner.Split(scanCRLF)
 		for scanner.Scan() {
+			if scanner.Text() == "" {
+				continue // skip empty tokens from bare \r
+			}
 			s.mu.Lock()
 			s.lines = append(s.lines, scanner.Text())
 			s.mu.Unlock()
