@@ -11,6 +11,7 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 - **Premature Promotion**: Forces the JVM to promote junk objects into the Old Generation faster than a mid-life crisis.
 - **Full GC Therapy**: Induces Garbage Collection pauses so long that the server admins have time to take up gardening while the JVM freezes in agony.
 - **OOM Dreams**: Gently nudges the server toward an `OutOfMemoryError` and a massive `.hprof` heap dump that will take three days to download.
+- **Offline Detection**: Pre-flight check aborts immediately if the server is already down. Workers detect mid-run outages and back off gracefully instead of hammering a corpse — then resume automatically when the server comes back up.
 
 ## ✨ Features for the Discerning Chaos-Enjoyer:
 - **SRV Record Magic**: Just point it at `play.target.com`. We'll find the port so you don't have to.
@@ -20,13 +21,44 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 - **Bespoke Encryption**: Hand-rolled AES/CFB8 implementation for online-mode servers. We do our own crypto because the standard library wasn't "Minecrafty" enough.
 - **The Dribble Strategy**: If we can't get into the Play state, we'll slowly drip filler bytes into an open frame like a leaky faucet, keeping the connection alive for up to 91 hours of pure heap-resident fun.
 - **Zero-Coordination Workers**: Thousands of goroutines working in perfect, lock-free disharmony using `sync/atomic` telemetry.
+- **Rolling Debug Display**: In `--debug` mode, Play-state packet spam is contained to a fixed 5-line terminal region so you can actually read what's happening.
 - **gaslighterc.toml**: Save your favorite settings in a config file. Because even chaos deserves a little structure.
+
+## 🕵️ **Wiretap** (`wiretap`)
+
+The intelligence officer. Performs a two-phase reconnaissance on a target before you commit.
+
+- **SLP Surveillance**: Extracts MOTD, player counts, and version without raising any alarms.
+- **Deep Protocol Probe**: Initiates a fake login to detect **Online/Offline Mode** (a "naked" offline-mode server skips the expensive RSA dance entirely), measures **RSA Key Size**, and maps **Compression Thresholds**.
+- **Stealth Infrastructure**: SRV resolution and SOCKS5 proxy rotation built in.
+
+## 🔌 **Pluginscanner** (`pluginscanner`) — *New*
+
+The interrogator. Logs into the server as a player, then abuses the tab-complete system to enumerate every installed plugin and its registered commands — without touching a single `/plugin list` command.
+
+### How it works:
+The Bukkit command namespace scheme (`pluginname:commandname`) leaks the entire software stack through the Command Suggestions protocol. We ask politely. The server tells us everything.
+
+### Features:
+- **Full verbose connection log**: Every packet in the Handshake → Login → Config → Play sequence is printed with timestamps, packet IDs, and byte counts — so you can see exactly what the server sends back.
+- **Interactive REPL**: After connecting, you get a shell. Type `scan` to enumerate all plugins, `probe <ns>` to drill into a specific one, or type `essentials:` directly as shorthand.
+- **Silent background**: Once you're in the REPL, keep-alives and other Play-state noise are handled silently in the background. The console stays clean for your actual work.
+- **SOCKS5 proxy support**: Because you're not doing this from your home IP.
+
+```
+Commands:
+  scan              enumerate all plugins via tab-complete
+  probe <ns>        list commands for a plugin namespace
+  <ns>:             shorthand — type "essentials:" directly
+  help              show this menu
+  exit / quit       disconnect
+```
 
 ## 🛠 Build & Install
 
 Requirements: Go 1.25+. Note that all compiled binaries are ignored by git to keep the workspace clean.
 
-### 1. Gaslighter (gaslighter)
+### 1. Gaslighter
 ```bash
 cd gaslighter
 go build -o ../gaslighter-bin .
@@ -38,6 +70,12 @@ cd wiretap
 go build -o ../wiretap-bin .
 ```
 
+### 3. Pluginscanner
+```bash
+cd pluginscanner
+go build -o ../pluginscanner-bin .
+```
+
 ## 🧠 Theoretical Foundations (The "Science" of Chaos)
 
 For the Senior Engineer who needs to justify these tools to a project manager, here is the technical breakdown of our "optimization" strategies.
@@ -47,14 +85,20 @@ Gaslighter is not a "stress tester." It is a **Resource Asphyxiator**. It target
 
 *   **The G1GC Heap Harvest**: Modern Minecraft servers love the G1 Garbage Collector. We exploit this love. By holding thousands of connections with maximized Handshake strings (255 characters of pure entropy), we overcrowd the **Eden Space**. The JVM, seeing these objects survive Minor GCs, assumes they are "critical infrastructure" and promotes them to the **Old Generation**. We aren't just using RAM; we are "leasing" the Old Gen indefinitely until the JVM triggers a **Full GC Stall**—a freeze so profound it gives the server admins time to reflect on their life choices.
 *   **Glacial Logins (--stall)**: Why flood a server when you can simply occupy it? By responding to authentication challenges at **glacial speeds** (28 seconds per step), a single worker can hold a **Login Thread** hostage for nearly the full 30-second timeout. With 5,000 workers, the server's thread pool becomes a bureaucratic nightmare where no one can join, and everyone is "waiting for a response."
-*   **The HAR Strategy (--har)**: Hit-and-Run. We target the `AsyncPlayerPreLoginEvent` to force the server's backend plugins (database-backed auth, geo-IP filters) to exhaust their **connection pools**. It’s the digital equivalent of ringing every doorbell in a skyscraper and running away before the security guards can check the cameras.
+*   **The HAR Strategy (--har)**: Hit-and-Run. We target the `AsyncPlayerPreLoginEvent` to force the server's backend plugins (database-backed auth, geo-IP filters) to exhaust their **connection pools**. It's the digital equivalent of ringing every doorbell in a skyscraper and running away before the security guards can check the cameras.
 
 ### 🕵️ Wiretap: The Intelligence Officer
 Wiretap is the scalpel used to find the crack in the armor.
 
-*   **SLP Surveillance**: A non-intrusive scan that extracts the MOTD and player counts. It’s like checking a server’s pulse without them knowing you’re in the room.
+*   **SLP Surveillance**: A non-intrusive scan that extracts the MOTD and player counts. It's like checking a server's pulse without them knowing you're in the room.
 *   **Deep Protocol Probe**: We initiate a "Handshake State 2" (Login) to see how the server handles its laundry. We detect **Online/Offline Mode** (identifying "naked" servers), capture **RSA Key Sizes** (measuring hardware "bravery"), and map **Compression Thresholds**.
 *   **Stealth Infrastructure**: Built-in **SRV Resolution** and **SOCKS5 Proxy Rotation** ensure that your reconnaissance is as invisible as a ghost in a machine.
+
+### 🔌 Pluginscanner: The Tattletale
+Pluginscanner exploits the **Command Suggestions protocol** (Tab-Complete in fancy clothes). In Minecraft, every plugin registers its commands under a `namespace:command` scheme. The server helpfully broadcasts this entire registry to anyone who asks — including someone who just connected under a random fake username with no intention of actually playing.
+
+*   **Protocol 767 specifics**: Serverbound `0x0B` (Command Suggestions Request), Clientbound `0x0E` (Command Suggestions Response). Not `0x0F` — that's Close Container, which gets you kicked immediately. Ask us how we know.
+*   **The Interrogation**: Send an empty tab-complete. Collect plugin namespaces. Drill into each one. The server does all the work.
 
 ## 🚀 Getting Started (The 2-Minute Warning)
 
@@ -62,9 +106,17 @@ Wiretap is the scalpel used to find the crack in the armor.
    ```bash
    sudo ./setup.sh
    ```
-2. **Ignite**:
+2. **Recon first**:
    ```bash
-   # Use the SRV record, go debug mode, and wait for the "connection refused" of victory.
+   ./wiretap-bin play.server.com
+   ```
+3. **Fingerprint the stack**:
+   ```bash
+   ./pluginscanner-bin play.server.com
+   # > scan
+   ```
+4. **Ignite**:
+   ```bash
    ./gaslighter-bin --debug play.server.com
    ```
 

