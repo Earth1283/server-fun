@@ -17,3 +17,6 @@ docs/*
 .gemini/
 .claude/
 server/
+
+# Testing
+run/
