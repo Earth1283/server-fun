@@ -54,6 +54,32 @@ Commands:
   exit / quit       disconnect
 ```
 
+## 📈 **Pulse** (`pulse`) — *New*
+
+The cardiologist. While the other tools *cause* the heart attack, **Pulse** stands at the bedside watching the monitor. It hammers the Server List Ping endpoint on a configurable heartbeat and renders the server's vitals as a live, beautiful TUI — so when you fire Gaslighter in the next terminal, you can *watch* the latency climb and the player count flatline in real time.
+
+### What it watches (100% non-intrusive, SLP-only — it never joins):
+- **Ping latency** via the canonical Ping/Pong packet, graphed as a scrolling time-series.
+- **Player count** over time — watch them rage-quit live.
+- **MOTD / version** drift — catch the admin frantically swapping configs mid-incident.
+- **Up/Down transitions** — the exact second the JVM gives up the ghost.
+
+### The dashboard:
+- **Time-series line charts** (braille-rendered) for latency and players.
+- **Sparklines + gauges** header for an at-a-glance heartbeat.
+- **Latency histogram** with `min / avg / p50 / p95 / p99 / max` — turn "it felt laggy" into a percentile.
+- **Event log** — timestamped, colour-coded: went OFFLINE, recovered, latency spike, version changed, player exodus.
+- **Live controls**: `+`/`-` to retune the poll interval *without restarting*, `space` to pause, `r` to poll now, `c` to clear events, `q` to quit.
+- **SQLite persistence** (`--db runs.db`): every sample is logged so you can replay the autopsy later — or feed it to the manager dashboard.
+- **SRV + SOCKS5**: same stealth infrastructure as the rest of the suite.
+
+```bash
+./pulse-bin play.server.com                  # 2s heartbeat, in-memory only
+./pulse-bin --interval 1s --db run.db play.server.com   # high-res + persist the evidence
+```
+
+> Pro tip: run `pulse` in one pane and `gaslighter` in another. The histogram's p99 is the number you put in the incident report.
+
 ## 🛠 Build & Install
 
 Requirements: Go 1.25+. Note that all compiled binaries are ignored by git to keep the workspace clean.
@@ -74,6 +100,12 @@ go build -o ../wiretap-bin .
 ```bash
 cd pluginscanner
 go build -o ../pluginscanner-bin .
+```
+
+### 4. Pulse
+```bash
+cd pulse
+go build -o ../pulse-bin .
 ```
 
 ## 🧠 Theoretical Foundations (The "Science" of Chaos)

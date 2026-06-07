@@ -4,6 +4,7 @@
 /mc-probe-bin
 /pluginscanner-bin
 /manager-bin
+/pulse-bin
 *.exe
 *.exe~
 *.dll
@@ -20,3 +21,8 @@ server/
 
 # Testing
 run/
+
+# Pulse SQLite run logs
+*.db
+*.db-wal
+*.db-shm
