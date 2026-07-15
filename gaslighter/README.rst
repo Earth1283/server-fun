@@ -208,6 +208,9 @@ Usage
       -u, --player-uuid string         Mojang player UUID matching the access token
       -v, --verbose                    print per-connection TCP errors
       -w, --workers int                concurrent connections to maintain (default 10000)
+              --wander                      randomly move/hold position once in Play state (default false)
+              --wander-interval duration    how often to roll move-or-hold (default 2s)
+              --wander-step float           max blocks moved per axis on a move tick (default 0.5)
 
 Examples
 ~~~~~~~~
@@ -247,6 +250,47 @@ Pre-login spam attack (high frequency)::
 Maximum throughput pre-login spam (Hit-and-Run)::
 
     ./gaslighter 127.0.0.1:25565 --prelogin --har
+
+Full join with wandering movement — forces unique per-bot chunk loading instead of everyone idling at spawn::
+
+    ./gaslighter 127.0.0.1:25565 --wander
+
+Verify the movement handshake against a real server before running at scale::
+
+    ./gaslighter --debug --wander 127.0.0.1:25565
+
+----
+
+Movement / Wander Mode
+-----------------------
+
+``--wander`` breaks the assumption that held connections are free to share
+spawn chunks. Once a connection reaches Play state:
+
+1. The server's initial **Synchronize Player Position** packet is parsed for
+   the bot's spawn coordinates and a **teleport ID**. The client immediately
+   replies with **Confirm Teleportation** — real servers won't process any
+   movement packets until this ack is sent.
+2. On a fixed tick (``--wander-interval``), each bot's own RNG decides
+   move-or-hold. On a move, X/Z shift by a random offset up to
+   ``--wander-step`` blocks and a **Player Position And Rotation** packet is
+   sent; on a hold, the same position is resent so the server still sees
+   regular movement traffic.
+3. A **Client Status (respawn)** packet fires on a fixed 10s timer,
+   unconditionally. This is a no-op if the bot isn't dead — cheaper than
+   parsing Combat Death / Set Health packets to detect an actual death, at
+   the cost of one wasted packet most of the time.
+
+Bots never simulate gravity or read chunk data, so they can drift to a Y
+level that doesn't match real terrain — plausible fodder for anti-cheat
+plugins to kick on. That's fine: a kicked worker just reconnects via the
+normal retry loop in ``worker()``.
+
+**Protocol ID confidence:** Confirm Teleportation (``0x00``) and Client
+Status (``0x09``) are long-stable IDs. Player Position And Rotation
+(``0x1D``) is this file's first use of a movement packet and hasn't been
+exercised against a real server yet — confirm it with ``--debug --wander``
+before trusting ``--wander`` at scale.
 
 ----
 

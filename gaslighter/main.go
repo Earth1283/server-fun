@@ -10,15 +10,16 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,22 +31,29 @@ import (
 )
 
 var (
-	activeConns      atomic.Int64
-	bytesSent        atomic.Int64
-	droppedConns     atomic.Int64
-	newConns         atomic.Int64
-	proxyCounter     atomic.Uint64
-	offlineDetected  atomic.Bool
+	activeConns     atomic.Int64
+	bytesSent       atomic.Int64
+	droppedConns    atomic.Int64
+	newConns        atomic.Int64
+	proxyCounter    atomic.Uint64
+	offlineDetected atomic.Bool
 
 	// Mojang credentials for online-mode auth. If empty, encryption is attempted
 	// but Mojang join is skipped — the server will kick with "Failed to verify username!"
-	accessToken string
-	playerUUID  string
-	login       bool
-	prelogin    bool
-	har         bool
-	stall       bool
+	accessToken   string
+	playerUUID    string
+	login         bool
+	prelogin      bool
+	har           bool
+	stall         bool
 	stallDuration time.Duration
+
+	// Movement simulation. Only takes effect once a connection reaches Play
+	// state (offline-mode or authenticated online-mode) — the dribble
+	// fallback never joins, so there's nothing to move.
+	wander         bool
+	wanderInterval time.Duration
+	wanderStep     float64
 )
 
 func stallIfEnabled() {
@@ -74,15 +82,15 @@ var (
 // ---------------------------------------------------------------------------
 
 const (
-	cReset     = "\033[0m"
-	cDim       = "\033[2m"
-	cBoldGreen = "\033[1;32m"
-	cBoldCyan  = "\033[1;36m"
-	cBoldRed   = "\033[1;31m"
+	cReset      = "\033[0m"
+	cDim        = "\033[2m"
+	cBoldGreen  = "\033[1;32m"
+	cBoldCyan   = "\033[1;36m"
+	cBoldRed    = "\033[1;31m"
 	cBoldYellow = "\033[1;33m"
-	cGreen     = "\033[32m"
-	cCyan      = "\033[36m"
-	cGray      = "\033[90m"
+	cGreen      = "\033[32m"
+	cCyan       = "\033[36m"
+	cGray       = "\033[90m"
 )
 
 func ts() string { return fmt.Sprintf("%s%s%s", cDim, time.Now().Format("15:04:05.000"), cReset) }
@@ -314,7 +322,7 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 	defer conn.Close()
 	dbgOK(fmt.Sprintf("connected to %s", target))
 
-	// ── Handshake ──────────────────────────────────────────────────────────
+	// Handshake with the server
 	hs := buildHandshake(host, port)
 	conn.Write(hs)
 	dbgSend(0x00, "Handshake", hs)
@@ -326,7 +334,7 @@ func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Du
 
 	dbgState("Handshake", "Login")
 
-	// ── Login state ────────────────────────────────────────────────────────
+	// Log in state
 	compressed := false
 	active := net.Conn(conn)
 
@@ -480,6 +488,14 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 	playRingN = 0 // reset rolling display for this session
 	kaCount := 0
 
+	var connMu sync.Mutex
+	writePacket := func(pkt []byte) error {
+		connMu.Lock()
+		defer connMu.Unlock()
+		_, err := conn.Write(pkt)
+		return err
+	}
+
 	if login {
 		go func() {
 			time.Sleep(1000 * time.Millisecond)
@@ -489,13 +505,74 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 
 			cmd1 := fmt.Sprintf("register %s", pass1)
 			pkt1 := buildChatCommand(cmd1, compressed)
-			conn.Write(pkt1)
-			playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd1), pkt1))
+			if writePacket(pkt1) == nil {
+				playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd1), pkt1))
+			}
 
 			cmd2 := fmt.Sprintf("register %s %s", pass2, pass1)
 			pkt2 := buildChatCommand(cmd2, compressed)
-			conn.Write(pkt2)
-			playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd2), pkt2))
+			if writePacket(pkt2) == nil {
+				playLog(fmtSendLine(0x04, fmt.Sprintf("/%s", cmd2), pkt2))
+			}
+		}()
+	}
+
+	var (
+		posMu            sync.Mutex
+		posX, posY, posZ float64
+		havePos          bool
+	)
+
+	if wander {
+		done := make(chan struct{})
+		defer close(done)
+
+		go func() {
+			wRng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			moveTicker := time.NewTicker(wanderInterval)
+			defer moveTicker.Stop()
+			respawnTicker := time.NewTicker(10 * time.Second)
+			defer respawnTicker.Stop()
+
+			for {
+				select {
+				case <-done:
+					return
+
+				case <-moveTicker.C:
+					posMu.Lock()
+					ready := havePos
+					x, y, z := posX, posY, posZ
+					posMu.Unlock()
+					if !ready {
+						continue
+					}
+					moved := wRng.Intn(2) == 0
+					if moved {
+						x += (wRng.Float64()*2 - 1) * wanderStep
+						z += (wRng.Float64()*2 - 1) * wanderStep
+					}
+					pkt := buildPlayerPositionRot(x, y, z, true, compressed)
+					if writePacket(pkt) != nil {
+						return
+					}
+					label := "hold"
+					if moved {
+						label = "move"
+					}
+					playLog(fmtSendLine(0x1D, fmt.Sprintf("Player Position And Rotation (%s)  x=%.1f z=%.1f", label, x, z), pkt))
+					posMu.Lock()
+					posX, posZ = x, z
+					posMu.Unlock()
+
+				case <-respawnTicker.C:
+					pkt := buildClientStatusRespawn(compressed)
+					if writePacket(pkt) != nil {
+						return
+					}
+					playLog(fmtSendLine(0x09, "Client Status (respawn)", pkt))
+				}
+			}
 		}()
 	}
 
@@ -525,14 +602,27 @@ func debugRunPlay(conn net.Conn, compressed bool, start time.Time) {
 			kaID, _ := binary.ReadUvarint(bytes.NewReader(data))
 			playLog(fmtInfoLine("id=%d", kaID))
 			resp := buildPacket(0x18, data, compressed)
-			conn.Write(resp)
-			playLog(fmtSendLine(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp))
+			if writePacket(resp) == nil {
+				playLog(fmtSendLine(0x18, fmt.Sprintf("Keep Alive Response  #%d", kaCount), resp))
+			}
 
 		case 0x28: // Join Game
 			playLog(fmtInfoLine("play start"))
 
-		case 0x3C: // Player Position
+		case 0x3C: // Synchronize Player Position
 			playLog(fmtInfoLine("server position/rotation update"))
+			if wander {
+				if x, y, z, tid, ok := parseSyncPlayerPosition(data); ok {
+					ack := buildConfirmTeleport(tid, compressed)
+					if writePacket(ack) == nil {
+						playLog(fmtSendLine(0x00, fmt.Sprintf("Confirm Teleportation  id=%d", tid), ack))
+					}
+					posMu.Lock()
+					posX, posY, posZ = x, y, z
+					havePos = true
+					posMu.Unlock()
+				}
+			}
 		}
 	}
 }
@@ -558,9 +648,7 @@ func min(a, b int) int {
 	return b
 }
 
-// ---------------------------------------------------------------------------
 // Write-side helpers
-// ---------------------------------------------------------------------------
 
 func writeVarInt(buf []byte, v int) []byte {
 	for {
@@ -660,9 +748,90 @@ func buildEncryptionResponse(encSecret, encToken []byte) []byte {
 	return buildPacket(0x01, data, false)
 }
 
-// ---------------------------------------------------------------------------
+// Movement (wander)
+//
+// Packet IDs below (Confirm Teleportation 0x00, Client Status 0x09, Player
+// Position And Rotation 0x1D) are protocol-767 (1.21.1) serverbound Play IDs
+// per public protocol references, cross-checked against the IDs this file
+// already relies on elsewhere (Chat Command 0x04, Command Suggestions 0x0B,
+// Close Container 0x0F, Keep Alive 0x18 all line up with the same ordering).
+// The 0x1D movement ID specifically hasn't been exercised by this codebase
+// before now — verify it against a real target with --debug before relying
+// on --wander at scale.
+
+func writeFloat64(buf []byte, v float64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, math.Float64bits(v))
+	return append(buf, b...)
+}
+
+func writeFloat32(buf []byte, v float32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, math.Float32bits(v))
+	return append(buf, b...)
+}
+
+func readFloat64(b []byte) float64 {
+	return math.Float64frombits(binary.BigEndian.Uint64(b))
+}
+
+// parseSyncPlayerPosition decodes the clientbound Synchronize Player Position
+// packet: X, Y, Z (float64), Yaw, Pitch (float32), Flags (byte), TeleportId (VarInt).
+func parseSyncPlayerPosition(payload []byte) (x, y, z float64, teleportID int, ok bool) {
+	const fixed = 8 + 8 + 8 + 4 + 4 + 1
+	if len(payload) < fixed {
+		return 0, 0, 0, 0, false
+	}
+	pos := 0
+	x = readFloat64(payload[pos:])
+	pos += 8
+	y = readFloat64(payload[pos:])
+	pos += 8
+	z = readFloat64(payload[pos:])
+	pos += 8
+	pos += 4 + 4 // yaw, pitch — unused
+	pos += 1     // flags byte
+	if pos >= len(payload) {
+		return 0, 0, 0, 0, false
+	}
+	teleportID, _ = decodeVarInt(payload[pos:])
+	return x, y, z, teleportID, true
+}
+
+// buildConfirmTeleport acknowledges a Synchronize Player Position packet.
+// Real servers won't process further movement packets until this is sent.
+func buildConfirmTeleport(teleportID int, compressed bool) []byte {
+	var payload []byte
+	payload = writeVarInt(payload, teleportID)
+	return buildPacket(0x00, payload, compressed)
+}
+
+// buildPlayerPositionRot sends a serverbound movement update.
+func buildPlayerPositionRot(x, y, z float64, onGround bool, compressed bool) []byte {
+	var payload []byte
+	payload = writeFloat64(payload, x)
+	payload = writeFloat64(payload, y)
+	payload = writeFloat64(payload, z)
+	payload = writeFloat32(payload, 0) // yaw
+	payload = writeFloat32(payload, 0) // pitch
+	if onGround {
+		payload = append(payload, 0x01)
+	} else {
+		payload = append(payload, 0x00)
+	}
+	return buildPacket(0x1D, payload, compressed)
+}
+
+// buildClientStatusRespawn requests a respawn (action 0). Sent unconditionally
+// on a timer rather than parsed off death packets — harmless no-op if the bot
+// isn't actually dead, and sidesteps needing exact Combat Death / Set Health IDs.
+func buildClientStatusRespawn(compressed bool) []byte {
+	var payload []byte
+	payload = writeVarInt(payload, 0)
+	return buildPacket(0x09, payload, compressed)
+}
+
 // Read-side helpers
-// ---------------------------------------------------------------------------
 
 func readVarInt(r io.Reader) (int, error) {
 	var v int
@@ -763,9 +932,7 @@ func parseEncryptionRequest(payload []byte) (serverID string, pubKeyDER, verifyT
 	return
 }
 
-// ---------------------------------------------------------------------------
 // AES/CFB8 encryption
-// ---------------------------------------------------------------------------
 
 type cfb8Stream struct {
 	block cipher.Block
@@ -822,9 +989,7 @@ func enableEncryption(conn net.Conn, sharedSecret []byte) net.Conn {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Mojang session auth
-// ---------------------------------------------------------------------------
 
 func minecraftSHA1(parts ...[]byte) string {
 	h := sha1.New()
@@ -878,9 +1043,7 @@ func mojangJoin(token, uuid, serverHash string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // Login sequence (production path)
-// ---------------------------------------------------------------------------
 
 func tryAdvanceToPlay(conn net.Conn, verbose bool) (net.Conn, bool, bool) {
 	compressed := false
@@ -1011,6 +1174,23 @@ func holdConnPlay(conn net.Conn, compressed bool, verbose bool, rng *rand.Rand) 
 	defer conn.Close()
 	defer activeConns.Add(-1)
 
+	// The cipherConn's CFB8 stream state isn't safe for concurrent writers
+	// (encryption depends on strict write ordering), and with --login and
+	// --wander both able to fire off goroutines that write independently of
+	// the main read loop, all writes need to be serialized through here.
+	var connMu sync.Mutex
+	writePacket := func(pkt []byte) error {
+		connMu.Lock()
+		defer connMu.Unlock()
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, err := conn.Write(pkt)
+		conn.SetWriteDeadline(time.Time{})
+		if err == nil {
+			bytesSent.Add(int64(len(pkt)))
+		}
+		return err
+	}
+
 	if login {
 		go func() {
 			time.Sleep(1000 * time.Millisecond)
@@ -1018,14 +1198,62 @@ func holdConnPlay(conn net.Conn, compressed bool, verbose bool, rng *rand.Rand) 
 			pass2 := randString(rng, 10)
 
 			cmd1 := fmt.Sprintf("register %s", pass1)
-			pkt1 := buildChatCommand(cmd1, compressed)
-			conn.Write(pkt1)
-			bytesSent.Add(int64(len(pkt1)))
+			writePacket(buildChatCommand(cmd1, compressed))
 
 			cmd2 := fmt.Sprintf("register %s %s", pass2, pass1)
-			pkt2 := buildChatCommand(cmd2, compressed)
-			conn.Write(pkt2)
-			bytesSent.Add(int64(len(pkt2)))
+			writePacket(buildChatCommand(cmd2, compressed))
+		}()
+	}
+
+	var (
+		posMu            sync.Mutex
+		posX, posY, posZ float64
+		havePos          bool
+	)
+
+	if wander {
+		done := make(chan struct{})
+		defer close(done)
+
+		go func() {
+			// Own RNG source — the caller's rng is also used by the --login
+			// goroutine above, and math/rand.Rand isn't safe for concurrent use.
+			wRng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			moveTicker := time.NewTicker(wanderInterval)
+			defer moveTicker.Stop()
+			respawnTicker := time.NewTicker(10 * time.Second)
+			defer respawnTicker.Stop()
+
+			for {
+				select {
+				case <-done:
+					return
+
+				case <-moveTicker.C:
+					posMu.Lock()
+					ready := havePos
+					x, y, z := posX, posY, posZ
+					posMu.Unlock()
+					if !ready {
+						continue // haven't seen the initial Sync Player Position yet
+					}
+					if wRng.Intn(2) == 0 {
+						x += (wRng.Float64()*2 - 1) * wanderStep
+						z += (wRng.Float64()*2 - 1) * wanderStep
+					}
+					if writePacket(buildPlayerPositionRot(x, y, z, true, compressed)) != nil {
+						return
+					}
+					posMu.Lock()
+					posX, posZ = x, z
+					posMu.Unlock()
+
+				case <-respawnTicker.C:
+					if writePacket(buildClientStatusRespawn(compressed)) != nil {
+						return
+					}
+				}
+			}
 		}()
 	}
 
@@ -1040,12 +1268,21 @@ func holdConnPlay(conn net.Conn, compressed bool, verbose bool, rng *rand.Rand) 
 			}
 			return
 		}
-		if id == 0x26 {
-			resp := buildPacket(0x18, data, compressed)
-			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			conn.Write(resp)
-			conn.SetWriteDeadline(time.Time{})
-			bytesSent.Add(int64(len(resp)))
+
+		switch id {
+		case 0x26: // Keep Alive
+			writePacket(buildPacket(0x18, data, compressed))
+
+		case 0x3C: // Synchronize Player Position
+			if wander {
+				if x, y, z, tid, ok := parseSyncPlayerPosition(data); ok {
+					writePacket(buildConfirmTeleport(tid, compressed))
+					posMu.Lock()
+					posX, posY, posZ = x, y, z
+					havePos = true
+					posMu.Unlock()
+				}
+			}
 		}
 	}
 }
@@ -1293,6 +1530,9 @@ promotion from Eden → Old Gen, saturating heap and triggering Full GC / OOM.`,
 		har, _ = cmd.Flags().GetBool("har")
 		stall, _ = cmd.Flags().GetBool("stall")
 		stallDuration, _ = cmd.Flags().GetDuration("stall-duration")
+		wander, _ = cmd.Flags().GetBool("wander")
+		wanderInterval, _ = cmd.Flags().GetDuration("wander-interval")
+		wanderStep, _ = cmd.Flags().GetFloat64("wander-step")
 
 		proxyPath := viper.GetString("proxies")
 		if proxyPath != "" {
@@ -1360,6 +1600,9 @@ func init() {
 	f.Bool("har", false, "hit-and-run mode: don't wait for server response in pre-login mode")
 	f.Bool("stall", false, "slow down the login sequence to glacial speeds")
 	f.Duration("stall-duration", 25*time.Second, "base time to wait between login steps")
+	f.Bool("wander", false, "randomly move/hold position once in Play state, forcing unique per-bot chunk loading (no effect on the dribble fallback)")
+	f.Duration("wander-interval", 2*time.Second, "how often to roll move-or-hold and send a position update")
+	f.Float64("wander-step", 0.5, "max blocks moved per axis when a move is rolled")
 	f.StringP("proxies", "p", "", "path to .txt file with SOCKS5 proxies")
 	f.String("proxy-strategy", "random", "proxy selection strategy: random or round-robin")
 	viper.BindPFlags(f)
