@@ -1,4 +1,4 @@
-mc-stress
+gaslighter
 =========
 
 A Go CLI tool for stress-testing a Minecraft server by exploiting the
