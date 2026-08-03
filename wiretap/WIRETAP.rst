@@ -9,23 +9,29 @@ protocol probes to map out exactly what you're dealing with.
 Features for the Sophisticated Spy
 ----------------------------------
 
-* **SLP Surveillance** — Extracts MOTD, player counts, and versions without
+* **SLP Surveillance** — Extracts MOTD, player counts, player samples, and versions without
   ever leaving a "Join" log.
-* **Deep Probe** — Determines online/offline status, compression thresholds,
-  and RSA key sizes. If the server is naked (offline mode), we'll know.
-* **Proxy Stealth** — Supports the same SOCKS5 and SRV magic as Gaslighter,
-  because reconnaissance should be invisible.
+* **Ping RTT Latency** — Measures round-trip ping time to target server in milliseconds.
+* **Deep Probe & Fingerprinting** — Determines online/offline status, compression thresholds,
+  RSA key sizes, proxy enforcement (Velocity / BungeeGuard), disconnect reasons, and server stack fingerprints.
+* **Structured Output & Batch Scan** — Export intelligence as JSON or plain text files, disable colors for piping, and scan multiple targets from an input file.
+* **Proxy Stealth** — Supports SOCKS5 proxy rotation and DNS SRV target resolution.
 
 Usage
 -----
 
 .. code-block:: text
 
-    wiretap-bin <ip[:port] | hostname> [flags]
+    wiretap-bin [ip[:port] | hostname] [flags]
 
     Flags:
       -p, --proxies string          path to .txt file with SOCKS5 proxies
           --proxy-strategy string   proxy strategy: random or round-robin (default "random")
+      -j, --json                    output probe results as JSON
+      -o, --output string           path to output file
+          --no-color                disable ANSI color output
+          --protocol int            Minecraft protocol version (default 767)
+      -i, --input-file string       path to text file containing list of target IPs/hostnames
 
 Examples
 ~~~~~~~~
@@ -34,9 +40,13 @@ Standard recon run::
 
     ./wiretap-bin mc.hypixel.net
 
-Quiet recon via proxies::
+Export JSON intelligence report::
 
-    ./wiretap-bin play.target.com -p proxies.txt --proxy-strategy round-robin
+    ./wiretap-bin mc.hypixel.net -j -o report.json
+
+Batch scan multiple targets quiet recon via proxies::
+
+    ./wiretap-bin -i targets.txt -p proxies.txt --proxy-strategy round-robin -j -o batch_results.json
 
 Why Use It?
 -----------
@@ -47,3 +57,4 @@ Toaster or a supercomputer. ``wiretap`` provides the "empirical validation"
 required to choose the right tool for the job.
 
 *Happy sniffing!* 🕵️
+

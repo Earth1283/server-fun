@@ -20,7 +20,7 @@ import (
 // ANSI colours
 // ---------------------------------------------------------------------------
 
-const (
+var (
 	cReset      = "\033[0m"
 	cDim        = "\033[2m"
 	cBoldGreen  = "\033[1;32m"
@@ -102,6 +102,10 @@ func decodeVarInt(buf []byte) (int, int) {
 		v |= int(b&0x7F) << (7 * uint(i))
 		if b&0x80 == 0 {
 			return v, i + 1
+		}
+		if i >= 4 {
+			// VarInt is max 5 bytes in MC protocol
+			break
 		}
 	}
 	return v, len(buf)
