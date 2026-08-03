@@ -1,0 +1,31 @@
+# Relevant excerpt of Paper's config/paper-global.yml - merge into your existing
+# file. Covers online-mode enforcement, JVM-adjacent Paper knobs, and the
+# connection-related settings ../g1gc-heap-exhaustion.md and
+# ../dribble-and-har.md reference. server.properties (online-mode=true) still
+# needs setting separately - Paper doesn't override that from here.
+
+proxies:
+  velocity:
+    enabled: true
+    online-mode: true    # trust Velocity's forwarded, already-verified identity
+    secret: "CHANGE_ME"  # must match velocity-secret.txt on the proxy side
+
+messages:
+  kick:
+    connection-throttle: "Connecting too fast, try again later."
+
+settings:
+  connection-throttle: 4000   # ms between connections from the same IP, backend-side
+                                # belt-and-suspenders behind the proxy's login-ratelimit -
+                                # relevant if this server is ever reachable directly,
+                                # intentionally or via misconfiguration.
+
+# Not a real Paper config key - shorthand reminder for the plugin-side pieces
+# that have no config-file equivalent and must be implemented as listeners
+# per ../dribble-and-har.md and ../wander-bot-detection.md:
+#   - AsyncPlayerPreLoginEvent token-bucket rate limiter (PreLoginRateLimiter)
+#   - FrameDeadlineHandler equivalent for any raw packet-level frame handling
+#     you've customized (only relevant if you've touched Netty's pipeline
+#     directly - most servers won't need this if fronted by Velocity, which
+#     terminates the raw handshake itself)
+#   - MovementPeriodicityDetector + respawn-metronome + Y-plausibility scoring

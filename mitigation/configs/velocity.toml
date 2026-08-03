@@ -1,0 +1,44 @@
+# Relevant excerpt of velocity.toml - the mitigations from ../g1gc-heap-exhaustion.md
+# ("Mitigation 1: cap what a connection is allowed to cost", "Mitigation 3: require a
+# Mojang session") expressed as Velocity proxy config. Merge into your existing file;
+# this is not a complete velocity.toml.
+
+config-version = "2.7"
+
+[servers]
+# Your backend Paper/Spigot server(s) - NOT exposed directly to the internet.
+# Everything below exists so that a gaslighter worker never reaches them without
+# first surviving Velocity's own login sequence.
+
+[forced-hosts]
+# If you rely on SRV-style vanity hostnames, list only the ones you actually
+# issue. Anything else arriving in the handshake gets rejected before it's
+# forwarded anywhere - this is the proxy-side equivalent of the handshake
+# length/allowlist check in g1gc-heap-exhaustion.md's Mitigation 1.
+
+[advanced]
+# Velocity's own connection timeout - keep this well under gaslighter's 30s
+# assumption (README: "avoid the server's 30-second login timeout"). A short
+# timeout here means workers that stall the login sequence (--stall) get
+# dropped by the proxy before backend resources are ever touched.
+connection-timeout = 5000
+read-timeout = 30000
+
+# Login rate limit - THE key line for defeating --join-delay (see
+# ../g1gc-heap-exhaustion.md, Mitigation 1). --join-delay throttles gaslighter's
+# combined connection rate to slide under exactly this kind of limit if it's
+# set too loosely or evaluated only per-raw-TCP-connection. Velocity evaluates
+# this per source IP at the LOGIN layer, not the TCP layer, which is a
+# meaningfully different (harder to sneak under) rate to match.
+login-ratelimit = 3000
+
+[player-info-forwarding]
+# "modern" forwarding requires the backend to trust Velocity's own signed
+# forwarding data, which in turn requires Velocity to have completed its own
+# Mojang-authenticated login with the client - see Mitigation 3. A worker
+# that can't complete a real Mojang session never gets a forwarded identity,
+# so the backend never spins up a "real" connection for it.
+player-info-forwarding-mode = "modern"
+
+[query]
+enabled = false  # don't give reconnaissance tools (see ../../wiretap) a freebie

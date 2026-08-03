@@ -1,0 +1,36 @@
+[Unit]
+Description=gaslighter-shield: load XDP connguard + dribble detector, sync verdicts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust IFACE to your actual NIC. Assumes objects are already built per
+# ../../network/README.md and placed in /opt/gaslighter-shield/.
+Environment=IFACE=eth0
+ExecStartPre=/usr/sbin/bpftool net detach xdp dev ${IFACE}
+ExecStart=/opt/gaslighter-shield/loader.sh ${IFACE}
+ExecStop=/usr/sbin/bpftool net detach xdp dev ${IFACE}
+Restart=on-failure
+RestartSec=5s
+
+# Needs CAP_BPF (or CAP_SYS_ADMIN on kernels predating the split) plus
+# CAP_NET_ADMIN to attach XDP - deliberately NOT running as root outright.
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
+# loader.sh (not included - write to fit your bpftool/libbpf version) needs to:
+#   1. Load xdp_connguard.o, attach to $IFACE in native (driver) mode if the
+#      NIC driver supports it, falling back to generic (skb) mode otherwise.
+#   2. Load tc_dribble_detect.o's kprobes on tcp_recvmsg entry/return.
+#   3. Pin both programs' maps under /sys/fs/bpf/gaslighter-shield/ so a
+#      separate, independently-restartable userspace daemon can read
+#      flow_verdicts and write blocklist without needing to reload the BPF
+#      programs themselves.
+#   4. Start (or exec into) the verdict-sync daemon that copies confirmed
+#      entries from flow_verdicts into blocklist, on a short poll interval
+#      (a few seconds is plenty - see ../network/README.md's deployment
+#      order notes on why this shouldn't be instant/unattended on day one).
