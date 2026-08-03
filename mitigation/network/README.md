@@ -2,7 +2,8 @@
 
 Kernel-level defenses that catch `gaslighter` traffic before it costs the JVM anything —
 before Netty allocates a buffer, before a plugin event fires, before a single byte
-reaches application code. These are the highest-effort, most "over-engineered" mitigations
+reaches application code. Think of it as the Secure Enclave of this mitigation stack:
+nothing gets to userspace without clearing hardware-adjacent scrutiny first. These are the highest-effort, most "over-engineered" mitigations
 in this directory on purpose: everything in the parent doc set (`../g1gc-heap-exhaustion.md`,
 `../dribble-and-har.md`) assumes the connection made it to userspace. These two programs
 are about not letting it get that far.

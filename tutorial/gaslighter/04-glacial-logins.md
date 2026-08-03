@@ -6,7 +6,7 @@ Sometimes the best way to break a server isn't a flood. It's a *drought*. Specif
 
 Every login attempt occupies a slot in the server's **Login Thread Pool**. Under normal circumstances, a client authenticates in a few hundred milliseconds and vacates the slot. The server expects this.
 
-We do not cooperate.
+We do not cooperate. Good things come to those who wait — the server, unfortunately, is not one of the good things.
 
 By responding to the server's authentication packets at a speed best described as *geological*, we hold each login slot hostage for up to 29 seconds — just under the 30-second timeout that would finally free it. The server cannot kick us. We are, technically, in the middle of logging in. We are just doing it *very thoughtfully*.
 

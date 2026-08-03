@@ -12,7 +12,7 @@ Paper/Spigot servers fire an `AsyncPlayerPreLoginEvent` for every new connection
 - **AuthMe / CMI / NexAuth** check if the username exists in their auth database
 - **Anti-bot plugins** query GeoIP APIs, check VPN blacklists, consult their feelings
 
-All of these database calls open **connections from the server's DB connection pool**. Connection pools are finite. When the pool is exhausted, legitimate players get "Timed Out" — not because the server is overloaded, but because every database connection is occupied by us, doing fake logins.
+All of these database calls open **connections from the server's DB connection pool**. Connection pools are finite. When the pool is exhausted, legitimate players get "Timed Out" — not because the server is overloaded, but because every database connection is occupied by us, doing fake logins. There's an event for that, and we're firing it 20,000 times a second.
 
 ### Mode 1: Standard Pre-Login Spam (`--prelogin`)
 

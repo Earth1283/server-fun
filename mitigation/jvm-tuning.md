@@ -64,6 +64,8 @@ application threads for anything but tiny, fixed-cost root-scanning pauses. Unde
   swap, not an architecture change. Every other mitigation in this directory (online-mode,
   handshake length caps, connection ceilings, kernel-layer detection) still applies and
   still reduces load on top of a GC that already doesn't buckle under what gets through.
+  It's basically the Apple Silicon transition of garbage collectors — swap the engine
+  under the hood, keep everything else running, and the stutter just isn't there anymore.
 
 ### Practical notes
 

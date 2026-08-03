@@ -1,6 +1,6 @@
 # 03: Stealth & Plausible Deniability — The Art of Not Being There
 
-A Senior Chaos Engineer never leaves a messy trail. Traffic should come from everywhere. Logs should say nothing. And if someone *does* ask, you should have a response ready that is technically not a lie.
+A Senior Chaos Engineer never leaves a messy trail. Traffic should come from everywhere. Logs should say nothing. And if someone *does* ask, you should have a response ready that is technically not a lie. Call it your personal Reality Distortion Field — Steve would understand.
 
 ### Infrastructure Evasion
 

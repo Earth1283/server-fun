@@ -4,7 +4,7 @@ This is the original. The classic. The "I read three JVM internals blog posts an
 
 ### The Theory: Exploiting the JVM's Trust Issues
 
-The G1GC is, at its core, an optimist. It assumes that objects which survive a Minor GC must be important. It promotes them. It gives them permanent housing in the Old Generation. It does not ask questions.
+The G1GC is, at its core, an optimist. It assumes that objects which survive a Minor GC must be important. It promotes them. It gives them permanent housing in the Old Generation. It does not ask questions. Old Gen doesn't reject weird objects — it thinks different.
 
 We exploit this optimism mercilessly.
 

@@ -2,6 +2,8 @@
 
 A collection of "stress testing" (read: server-breaking) utilities for the modern, Java-weary netrunner. If you've ever felt that a Minecraft server was enjoying its RAM a bit too much, you're in the right place.
 
+*Only gaslighter can do this.*
+
 ## The Crown Jewel: **Gaslighter** (`gaslighter`)
 
 The digital equivalent of a Slowloris attack, but with a specific grudge against the **G1 Garbage Collector**. While other tools try to drown the network, **Gaslighter** targets the server's soul: its heap.
@@ -10,7 +12,7 @@ The digital equivalent of a Slowloris attack, but with a specific grudge against
 - **Eden Space Overcrowding**: Floods the server with thousands of half-open connections.
 - **Premature Promotion**: Forces the JVM to promote junk objects into the Old Generation faster than a mid-life crisis.
 - **Full GC Therapy**: Induces Garbage Collection pauses so long that the server admins have time to take up gardening while the JVM freezes in agony.
-- **OOM Dreams**: Gently nudges the server toward an `OutOfMemoryError` and a massive `.hprof` heap dump that will take three days to download.
+- **OOM Dreams**: Gently nudges the server toward an `OutOfMemoryError` and a massive `.hprof` heap dump that will take three days to download. It just works — against you.
 - **Offline Detection**: Pre-flight check aborts immediately if the server is already down. Workers detect mid-run outages and back off gracefully instead of hammering a corpse — then resume automatically when the server comes back up.
 
 ## ✨ Features for the Discerning Chaos-Enjoyer:

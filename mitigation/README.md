@@ -6,7 +6,7 @@ by connection, heuristic by heuristic. If you run the "crown jewel" against your
 infrastructure and it works, this is where you come to make it stop working.
 
 This is defensive-only. Nothing here sends a packet at anyone; it's all detection, rate
-limiting, and JVM/kernel tuning applied to a server you administer.
+limiting, and JVM/kernel tuning applied to a server you administer — build your own walled garden.
 
 ## Map of the clinic
 
