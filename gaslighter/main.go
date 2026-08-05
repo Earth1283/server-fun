@@ -77,9 +77,7 @@ var (
 	date    = "unknown"
 )
 
-// ---------------------------------------------------------------------------
 // ANSI colours
-// ---------------------------------------------------------------------------
 
 const (
 	cReset      = "\033[0m"
@@ -128,9 +126,7 @@ func dbgErr(label string, err error) {
 	fmt.Printf("%s %s✗%s  %s: %v\n", ts(), cBoldRed, cReset, label, err)
 }
 
-// ---------------------------------------------------------------------------
 // Rolling 5-line log for Play state (avoids console flood from inbound packets)
-// ---------------------------------------------------------------------------
 
 var (
 	playRingBuf [5]string
@@ -219,9 +215,7 @@ func getDialer() (proxy.Dialer, error) {
 	return proxy.SOCKS5("tcp", proxyAddr, nil, baseDialer)
 }
 
-// ---------------------------------------------------------------------------
 // Packet name tables (protocol 767 / 1.21.1)
-// ---------------------------------------------------------------------------
 
 func loginSPacketName(id int) string {
 	switch id {
@@ -296,9 +290,7 @@ func playSPacketName(id int) string {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Debug runner (single connection, full packet log)
-// ---------------------------------------------------------------------------
 
 func debugRun(target string, port uint16, bloatSize int, dribbleInterval time.Duration) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -749,15 +741,7 @@ func buildEncryptionResponse(encSecret, encToken []byte) []byte {
 }
 
 // Movement (wander)
-//
-// Packet IDs below (Confirm Teleportation 0x00, Client Status 0x09, Player
-// Position And Rotation 0x1D) are protocol-767 (1.21.1) serverbound Play IDs
-// per public protocol references, cross-checked against the IDs this file
-// already relies on elsewhere (Chat Command 0x04, Command Suggestions 0x0B,
-// Close Container 0x0F, Keep Alive 0x18 all line up with the same ordering).
-// The 0x1D movement ID specifically hasn't been exercised by this codebase
-// before now — verify it against a real target with --debug before relying
-// on --wander at scale.
+// Using protocol 767 serverbound (v1.21.0~1)
 
 func writeFloat64(buf []byte, v float64) []byte {
 	b := make([]byte, 8)
@@ -1315,9 +1299,7 @@ func holdConn(conn net.Conn, interval time.Duration, verbose bool) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Worker
-// ---------------------------------------------------------------------------
 
 func randString(rng *rand.Rand, n int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -1423,9 +1405,7 @@ func worker(target string, port uint16, bloatSize int, dribbleInterval time.Dura
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Reporting / CLI
-// ---------------------------------------------------------------------------
 
 func startReporter() {
 	ticker := time.NewTicker(time.Second)
